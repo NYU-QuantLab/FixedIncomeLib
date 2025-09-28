@@ -4,6 +4,33 @@ from fixedincomelib.product.linear_products import (ProductBulletCashflow, Produ
 from fixedincomelib.product.non_linear_products import (ProductIborCapFloorlet, ProductOvernightCapFloorlet, ProductIborCapFloor, ProductOvernightCapFloor, ProductIborSwaption, ProductOvernightSwaption)
 from fixedincomelib.product.portfolio import (ProductPortfolio)
 
+### this is not the right set up
+class ProductDisplayVisitor(ProductVisitor):
+
+    def __init__(self):
+        self.m_display = []
+
+    def visit(self, prod : ProductBulletCashflow):
+        this_row = ['TerminationDate']
+        this_row.append(prod.terminationDate.ISO())
+        self.m_display.append(this_row)
+        
+        this_row = ['Currency']
+        this_row.append(prod.currency.value.code())
+        self.m_display.append(this_row)
+
+        this_row = ['Notional']
+        this_row.append(prod.notional)
+        self.m_display.append(this_row)
+
+        this_row = ['LongOrShort']
+        this_row.append(prod.longOrShort.valueStr)
+        self.m_display.append(this_row)
+
+    def display(self):
+        return pd.DataFrame(self.m_display, columns=['Attribute', 'Value'])    
+
+
 class CashflowVisitor(ProductVisitor):
 
     def visit(self, prod : ProductBulletCashflow):
