@@ -14,17 +14,34 @@ def build_rfr_future(
     notional: float | None,
     long_or_short: str,
 ):
-    start_iso, end_iso = axis_entry
-    use_notional = 1.0 if notional is None else float(notional)
+    if isinstance(axis_entry, str) and "x" in axis_entry:
+        start_iso, end_token = [s.strip() for s in axis_entry.split("x", 1)]
+    else:
+        start_iso, end_token = axis_entry
+
+    term_or_end: str = end_token
+    use_notional = None if notional is None else float(notional)
+    # return ProductRfrFuture(
+    #     effectiveDate=start_iso,
+    #     termOrEnd=end_iso,
+    #     index=conv.index_key,
+    #     compounding="COMPOUND",
+    #     strike=float(value),
+    #     notional=use_notional,
+    #     longOrShort=long_or_short,
+    # )
     return ProductRfrFuture(
         effectiveDate=start_iso,
-        termOrEnd=end_iso,
+        termOrEnd=term_or_end,
         index=conv.index_key,
-        compounding="COMPOUND",
-        strike=float(value),
-        notional=use_notional,
+        compounding="AVERAGE",
         longOrShort=long_or_short,
+        strike=0.0, 
+        notional=use_notional,
+        contractualSize=None,
+        accrued_flag=-1.0 
     )
+
 
 def build_rfr_swap(
     conv: DataConventionRFRSwap, *,

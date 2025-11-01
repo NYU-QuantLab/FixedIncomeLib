@@ -6,6 +6,7 @@ from fixedincomelib.market import (IndexRegistry, Currency)
 from typing import List, Optional, Union
 from fixedincomelib.date.utilities import makeSchedule,accrued
 from fixedincomelib.product.portfolio import ProductPortfolio
+from fixedincomelib.conventions.data_conventions import DataConventionRegistry
 
 # -------------------------
 # Atomic Cash-Flow Classes
@@ -224,40 +225,35 @@ class ProductRfrFuture(Product):
     def __init__(self,
                  effectiveDate: str,
                  termOrEnd: Union[str, TermOrTerminationDate],
-                 index: str,
-                 compounding: str,
-                 strike: float,
-                 notional: float,
+                 index: str, # sofr-1b
+                 compounding: str, # compound / average
                  longOrShort: str,
-                 contractualSize: Optional[float] = None) -> None:
+                 strike: float=0.0, # optional
+                 notional: Optional[float] = None, # notional amount
+                 contractualSize: Optional[float] = None,
+                 accrued_flag: float=-1.0
+                 ) -> None:
         
         self.effDate_    = Date(effectiveDate)
+        self.termOrEnd_ = termOrEnd if isinstance(termOrEnd, str) else TermOrTerminationDate(termOrEnd)
         self.indexKey_   = index
-        self.strike_     = strike
-        self.notional_   = notional
+        self.strike_     = float(strike)
         self.oisIndex_   = IndexRegistry().get(index)
         self.compounding_ = compounding.upper()
-
-        if isinstance(termOrEnd, str):
-            self.termOrEnd_ = TermOrTerminationDate(termOrEnd)
-        else:
-            self.termOrEnd_ = termOrEnd
+        self.conv = self.getFutureConvention()
+        self.notional_ = float(notional) if notional is not None else float(self.conv.contractual_notional)
 
         cal = self.oisIndex_.fixingCalendar()
         if self.termOrEnd_.isTerm():
             tenor = self.termOrEnd_.getTerm()
-            self.maturityDate_ = Date(
-                cal.advance(self.effDate_, tenor, self.oisIndex_.businessDayConvention())
-            )
+            self.maturityDate_ = Date(cal.advance(self.effDate_, tenor, self.oisIndex_.businessDayConvention()))
         else:
             self.maturityDate_ = self.termOrEnd_.getDate()
         
-        self.contractualSize_ = contractualSize
         if contractualSize is not None:
-            self.accrualFactor_ = contractualSize
+            self.accrualFactor_ = float(contractualSize)
         else:
-            # uses your accrued() util to compute year‐fraction
-            self.accrualFactor_ = accrued(self.effDate_, self.maturityDate_)
+            self.accrualFactor_ = self._infer_accrual_from_term(self.termOrEnd_)
 
         super().__init__(self.effDate_, self.maturityDate_, self.notional_, longOrShort, Currency(self.oisIndex_.currency().code()))
 
@@ -288,6 +284,45 @@ class ProductRfrFuture(Product):
     @property
     def terminationDate(self):
         return self.lastDate
+
+    @property
+    def futureConv(self):
+        return self.conv
+    
+    def _infer_accrual_from_term(self, termOrTerminationDate: TermOrTerminationDate, accrued_flag: float) -> float:
+        if termOrTerminationDate.isTerm() and accrued_flag == -1.0:
+            t = str(termOrTerminationDate.getTerm()).upper().strip()
+        if t in ("1M", "1MO"): return 1.0/12.0
+        if t in ("3M", "3MO"): return 0.25
+        if t in ("6M", "6MO"): return 0.5
+        if t in ("12M", "1Y"): return 1.0
+        if t.endswith("M"):
+            try:
+                m = int(t[:-1])
+                return m / 12.0
+            except Exception:
+                pass
+        if t.endswith("Y"):
+            try:
+                y = int(t[:-1])
+                return float(y)
+            except Exception:
+                pass
+
+        return accrued(self.effDate_, self.maturityDate_, self.conv.day_count())
+
+    def getFutureConvention(self):
+        # based on the inputs to deduce the data convention object
+        # pass
+        reg = DataConventionRegistry()
+        tenor = "3M"
+        if isinstance(self.termOrEnd_, TermOrTerminationDate) and self.termOrEnd_.isTerm():
+            tenor = self.termOrEnd_.getTerm().upper()
+        key = f"SOFR-FUTURE-{tenor}"
+        try:
+            return reg.get(key)
+        except Exception:
+            return reg.get("SOFR-FUTURE-3M")
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)

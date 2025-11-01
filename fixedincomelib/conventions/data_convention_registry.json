@@ -7,7 +7,8 @@
     "payment_offset": "2B",
     "payment_biz_day_conv": "F",
     "payment_hol_conv": "USGS",
-    "ois_compounding": "COMPOUND"
+    "ois_compounding": "COMPOUND",
+    "contractual_notional" : 1000000
   },
   "SOFR-FUTURE-3M": {
     "kind": "RFR FUTURE",
@@ -16,6 +17,7 @@
     "accrual_period": "3M",
     "payment_offset": "2B",
     "payment_biz_day_conv": "F",
-    "payment_hol_conv": "USGS"
+    "payment_hol_conv": "USGS",
+    "contractual_notional" : 1000000
   }
 }
