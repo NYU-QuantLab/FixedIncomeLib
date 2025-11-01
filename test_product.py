@@ -54,13 +54,26 @@ if __name__ == '__main__':
     # print(displayProduct(cf))
 
     # Future
-    fut = ProductFuture(
-        effectiveDate="2025-03-20",
-        index="USD-LIBOR-BBA-3M",
-        strike=98.75,
-        notional=1_000_000,
-        longOrShort="SHORT",
-        contractualSize=0.25
+    # rfr_fut = ProductRfrFuture(
+    #     effectiveDate="2025-03-20",
+    #     termOrEnd="3M",
+    #     index="SOFR-1B",
+    #     compounding="COMPOUND",
+    #     strike=98.75,
+    #     notional=1_000_000,
+    #     longOrShort="SHORT",
+    #     contractualSize=0.25
+    # )
+    p = ProductRfrFuture(
+        effectiveDate="2025-12-15",
+        termOrEnd="3M",
+        index="SOFR-1B",
+        compounding="AVERAGE",
+        longOrShort="LONG",
+        strike=0.0, 
+        notional=None, 
+        contractualSize=None, 
+        accrued_flag=-1.0
     )
 
-    print(displayProduct(fut))
+    print(displayProduct(p))
