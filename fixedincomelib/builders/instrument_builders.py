@@ -15,12 +15,13 @@ def build_rfr_future(
     long_or_short: str,
 ):
     start_iso, end_iso = axis_entry
-    use_notional = 1.0 if notional is None else float(notional)
+    use_notional = 1000000 if notional is None else float(notional)
+    print(start_iso, end_iso, conv.index_key, conv.compounding, float(value), use_notional)
     return ProductRfrFuture(
         effectiveDate=start_iso,
         termOrEnd=end_iso,
         index=conv.index_key,
-        compounding="COMPOUND",
+        compounding=conv.compounding,
         strike=float(value),
         notional=use_notional,
         longOrShort=long_or_short,
@@ -36,7 +37,8 @@ def build_rfr_swap(
 ):
     spot: Date = applyOffset(value_date, conv.payment_offset, conv.payment_hol_conv, conv.payment_biz_day_conv)
     maturity: Date = addPeriod(spot, str(axis_entry).strip().upper(), conv.payment_biz_day_conv, conv.payment_hol_conv)
-    use_notional = 1.0 if notional is None else float(notional)
+    use_notional = 1000000 if notional is None else float(notional)
+    print(spot, maturity, use_notional, conv.accrual_period, conv.index_key, float(value), conv.payment_biz_day_conv, conv.payment_hol_conv, conv.accrual_basis)
     return ProductOvernightSwap(
         effectiveDate=spot,
         maturityDate=maturity,

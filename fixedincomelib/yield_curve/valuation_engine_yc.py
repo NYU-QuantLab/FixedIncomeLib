@@ -38,7 +38,7 @@ class ValuationEngineProductBulletCashflow(ValuationEngine):
                                                                     to_date=pay_date,
                                                                     gradient=gradient,
                                                                     scaler=scale,
-                                                                    accumulate=True)
+                                                                    accumulate=accumulate)
             self.firstOrderRisk_ = self.model.getGradientArray()
 
 ValuationEngineRegistry().insert(
@@ -90,7 +90,7 @@ class ValuationEngineProductIborCashflow(ValuationEngine):
                                                                     to_date=pay_date,
                                                                     gradient=gradient,
                                                                     scaler=scale,
-                                                                    accumulate=True)
+                                                                    accumulate=accumulate)
         
         #dF term
         dFactor = float(self.model.discountFactor(self.funding_index, pay_date))
@@ -134,7 +134,9 @@ class ValuationEngineProductOvernightIndexCashflow(ValuationEngine):
         self.stub_start      = self.effective_date
 
     def calculateValue(self):
-        realizedend_date    = min(self.valuation_date, self.termination_date)
+        component_idx        = self.model.retrieveComponent(self.index_name)
+        day_counter          = component_idx.targetIndex.dayCounter()  
+        realizedend_date     = min(self.valuation_date, self.termination_date)
         historical_fixings   = self.index_manager.get_fixings(
             self.index_name,
             self.effective_date,
@@ -146,11 +148,11 @@ class ValuationEngineProductOvernightIndexCashflow(ValuationEngine):
         previous_accrual_date = self.effective_date
 
         for fixing_date, fixing_rate in sorted(historical_fixings.items()):
-            period_fraction = accrued(previous_accrual_date, fixing_date)
+            period_fraction = float(day_counter.yearFraction(previous_accrual_date, fixing_date))
             if self.compounding_type == "COMPOUND":
-                compound_factor *= (1.0 + fixing_rate * period_fraction)
+                compound_factor *= (1.0 + float(fixing_rate) * period_fraction)
             else:
-                realized_accrual += fixing_rate * period_fraction
+                realized_accrual += float(fixing_rate) * period_fraction
             previous_accrual_date = fixing_date
 
         if self.compounding_type == "COMPOUND":
@@ -159,7 +161,7 @@ class ValuationEngineProductOvernightIndexCashflow(ValuationEngine):
         forward_accrual = 0.0
         stubstart = max(self.valuation_date, self.effective_date)
         if stubstart < self.termination_date:
-            stub_fraction = accrued(stubstart, self.termination_date)
+            stub_fraction = float(day_counter.yearFraction(stubstart, self.termination_date))
             forward_rate    = self.model.forward(
                 self.index_name,
                 stubstart,
@@ -176,7 +178,7 @@ class ValuationEngineProductOvernightIndexCashflow(ValuationEngine):
         present_value = self.notional * self.direction * total_accrual
         self.value_    = [self.currency.value.code(), present_value]
 
-        self.compound_factor = compound_factor
+        self.compound_factor = float(compound_factor)
         self.stub_start = stubstart
     
     def calculateFirstOrderRisk(self, gradient=None, scaler = 1.0, accumulate = False):
@@ -197,18 +199,20 @@ class ValuationEngineProductOvernightIndexCashflow(ValuationEngine):
                                                                     to_date=pay_date,
                                                                     gradient=gradient,
                                                                     scaler=scale,
-                                                                    accumulate=True)
+                                                                    accumulate=accumulate)
 
         #dF term
         stub_start = self.stub_start
         if stub_start < self.termination_date:
-            accrual_stub = float(accrued(stub_start, self.termination_date))
-            is_compound = str(self.compounding_type).upper() == "COMPOUND"
-            compoundFactor = self.compound_factor
+            component_idx         = self.model.retrieveComponent(self.index_name)
+            day_counter           = component_idx.targetIndex.dayCounter()  
+            accrual_stub          = float(day_counter.yearFraction(stub_start, self.termination_date))
+            is_compound           = str(self.compounding_type).upper() == "COMPOUND"
+            compoundFactor        = self.compound_factor
             compounding_parameter = (float(compoundFactor) * accrual_stub) if is_compound else accrual_stub
-            dFactor = float(self.model.discountFactor(self.funding_index, pay_date))
+            dFactor               = float(self.model.discountFactor(self.funding_index, pay_date))
 
-            forward_scaler = float(scaler) * dFactor * self.direction * self.notional * compounding_parameter
+            forward_scaler        = float(scaler) * dFactor * self.direction * self.notional * compounding_parameter
             self.model.forwardRateGradientWrtModelParameters(index= self.index_name,
                                                              start_time = stub_start,
                                                              end_time = self.termination_date,
@@ -356,7 +360,7 @@ class ValuationEngineProductRfrFuture(ValuationEngine):
             to_date=self.end,
             gradient=gradient,
             scaler=scale,
-            accumulate=True
+            accumulate=accumulate
         )
 
         #dF term

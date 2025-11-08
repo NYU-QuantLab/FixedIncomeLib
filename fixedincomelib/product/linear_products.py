@@ -256,8 +256,8 @@ class ProductRfrFuture(Product):
         if contractualSize is not None:
             self.accrualFactor_ = contractualSize
         else:
-            # uses your accrued() util to compute year‐fraction
-            self.accrualFactor_ = accrued(self.effDate_, self.maturityDate_)
+            day_counter = self.oisIndex_.dayCounter()
+            self.accrualFactor_ = float(day_counter.yearFraction(self.effDate_, self.maturityDate_))
 
         super().__init__(self.effDate_, self.maturityDate_, self.notional_, longOrShort, Currency(self.oisIndex_.currency().code()))
 
@@ -311,9 +311,9 @@ class InterestRateStream(ProductPortfolio):
         notional: float                = 1.0,
         position: str                  = 'LONG',
         currency: str                  = 'USD',
-        holConv: str                   = 'TARGET',
-        bizConv: str                   = 'MF',
-        accrualBasis: str              = 'ACT/365 FIXED',
+        holConv: str                   = 'SOFR',
+        bizConv: str                   = 'F',
+        accrualBasis: str              = 'ACT/360',
         rule: str                      = 'BACKWARD',
         endOfMonth: bool               = False
     ):
@@ -354,9 +354,9 @@ class ProductIborSwap(Product):
         fixedRate: float,
         notional: float,
         position: str,
-        holConv: str      = 'TARGET',
-        bizConv: str      = 'MF',
-        accrualBasis: str = 'ACT/365 FIXED',
+        holConv: str      = 'USGS',
+        bizConv: str      = 'F',
+        accrualBasis: str = 'ACT/360',
         rule: str         = 'BACKWARD',
         endOfMonth: bool  = False
     ) -> None:
@@ -453,17 +453,17 @@ class ProductOvernightSwap(Product):
         fixedRate: float,
         notional: float,
         position: str,
-        holConv: str      = 'TARGET',
-        bizConv: str      = 'MF',
-        accrualBasis: str = 'ACT/365 FIXED',
+        holConv: str      = 'SOFR',
+        bizConv: str      = 'F',
+        accrualBasis: str = 'ACT/360',
         rule: str         = 'BACKWARD',
-        endOfMonth: bool  = False
+        endOfMonth: bool  = False,
     ) -> None:
         
         self.overnightIndexKey = overnightIndex
         self.fixedRate_        = fixedRate
         self.payFixed_         = (position.upper() == 'SHORT')
-        float_position = "LONG" if self.payFixed_ else "SHORT"
+        float_position         = "LONG" if self.payFixed_ else "SHORT"
 
         self.floatingLeg = InterestRateStream(
             startDate      = effectiveDate,
