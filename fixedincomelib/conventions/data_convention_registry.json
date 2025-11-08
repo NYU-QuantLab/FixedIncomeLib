@@ -14,6 +14,7 @@
     "index": "SOFR-1B",
     "accrual_basis": "ACT/360",
     "accrual_period": "3M",
+    "payment_offset": "0B",
     "payment_biz_day_conv": "F",
     "payment_hol_conv": "SOFR",
     "compounding": "COMPOUND"
