@@ -38,7 +38,7 @@ class DataConventionRFRSwap(DataConvention):
 
 @dataclass(frozen=True, slots=True)
 class DataConventionRFRFuture(DataConvention):
-    pass
+    compounding: str = "COMPOUND"
 
 BuilderFn = Callable[[Dict[str, Any], Dict[str, Any]], DataConvention]
 
