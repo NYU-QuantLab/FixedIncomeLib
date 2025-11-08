@@ -27,6 +27,8 @@ class HolidayConvention:
         self.value_ = ql.NullCalendar()
         if input.upper() == 'NYC':
             self.value_ = ql.UnitedStates(ql.UnitedStates.LiborImpact)
+        elif input.upper() == 'SOFR':
+            self.value_ = ql.UnitedStates(ql.UnitedStates.SOFR)
         elif input.upper() == 'USGS':
             self.value_ = ql.UnitedStates(ql.UnitedStates.FederalReserve) # not sure
         elif input.upper() == 'LON':

@@ -47,7 +47,7 @@ class DataConventionRegistry:
     _REQUIRED_BASE = ("index","accrual_basis","accrual_period","payment_offset","payment_biz_day_conv","payment_hol_conv")
     _DISPATCH: Dict[str, BuilderFn] = {
         "RFR SWAP":   lambda base, p: DataConventionRFRSwap(**base, ois_compounding=p.get("ois_compounding","COMPOUND")),
-        "RFR FUTURE": lambda base, p: DataConventionRFRFuture(**base),
+        "RFR FUTURE": lambda base, p: DataConventionRFRFuture(**base, compounding= p.get("compounding","COMPOUND")),
     }
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
