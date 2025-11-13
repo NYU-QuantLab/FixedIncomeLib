@@ -244,12 +244,13 @@ class YieldCurve(Model):
         else:
             grad[block] = float(scaler) * dF
 
-    def jacobian(self):
+    def jacobian(self, space: str ="pv"):
         registry = ValuationEngineRegistry()
         
         components: List[ModelComponent] = self._components_in_order()
         n = sum(len(getattr(comp, "nodes", [])) for comp in components)
         J = np.zeros((n,n), dtype = float)
+        S = np.ones(n, float)
 
         self._jacobian_row_labels = []
         r=0
@@ -261,11 +262,27 @@ class YieldCurve(Model):
                 ve = registry.new_valuation_engine(self, vp, prod)
                 ve.calculateFirstOrderRisk(gradient=None, scaler=1.0, accumulate=False)
                 J[r,:] = self.getGradientArray()
+
+                prod_type = getattr(prod, "prodType", "")
+                if prod_type == "ProductRfrFuture":
+                    # If your quote is the *price/strike*, this is negative
+                    S[r] = - float(prod.notional)
+                elif prod_type == "ProductOvernightSwap":
+                    ve.calculateValue()  # ensure annuity is prepared
+                    ann = ve.annuity()   # dimensionless sum of alpha*DF
+                    pay_fixed = getattr(prod, "payFixed", False)
+                    sign = -1.0 if pay_fixed else +1.0
+                    S[r] = sign * float(prod.notional) * float(ann)
+                
                 node_id = getattr(node, "node_id", str(getattr(node, "pillar_date", "")))
                 self._jacobian_row_labels.append((node_id))
                 r += 1
+
         J[np.abs(J) < 1e-12] = 0.0
-        return J
+        if space.lower() == "quote":
+            J = (J.T / S).T   # row-wise divide
+
+        return (J, S, self._jacobian_row_labels) if space.lower()=="pv" else J
 
 class YieldCurveModelComponent(ModelComponent):
 
