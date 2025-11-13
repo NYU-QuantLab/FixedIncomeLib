@@ -235,7 +235,7 @@ class ProductRfrFuture(Product):
                  ) -> None:
         
         self.effDate_    = Date(effectiveDate)
-        self.termOrEnd_ = termOrEnd if isinstance(termOrEnd, str) else TermOrTerminationDate(termOrEnd)
+        self.termOrEnd_ = termOrEnd if isinstance(termOrEnd, TermOrTerminationDate) else TermOrTerminationDate(termOrEnd)
         self.indexKey_   = index
         self.strike_     = float(strike)
         self.oisIndex_   = IndexRegistry().get(index)
@@ -253,7 +253,7 @@ class ProductRfrFuture(Product):
         if contractualSize is not None:
             self.accrualFactor_ = float(contractualSize)
         else:
-            self.accrualFactor_ = self._infer_accrual_from_term(self.termOrEnd_)
+            self.accrualFactor_ = self._infer_accrual_factor(accrued_flag)
 
         super().__init__(self.effDate_, self.maturityDate_, self.notional_, longOrShort, Currency(self.oisIndex_.currency().code()))
 
@@ -289,27 +289,36 @@ class ProductRfrFuture(Product):
     def futureConv(self):
         return self.conv
     
-    def _infer_accrual_from_term(self, termOrTerminationDate: TermOrTerminationDate, accrued_flag: float) -> float:
-        if termOrTerminationDate.isTerm() and accrued_flag == -1.0:
-            t = str(termOrTerminationDate.getTerm()).upper().strip()
-        if t in ("1M", "1MO"): return 1.0/12.0
-        if t in ("3M", "3MO"): return 0.25
-        if t in ("6M", "6MO"): return 0.5
-        if t in ("12M", "1Y"): return 1.0
-        if t.endswith("M"):
-            try:
-                m = int(t[:-1])
-                return m / 12.0
-            except Exception:
-                pass
-        if t.endswith("Y"):
-            try:
-                y = int(t[:-1])
-                return float(y)
-            except Exception:
-                pass
-
-        return accrued(self.effDate_, self.maturityDate_, self.conv.day_count())
+    def _infer_accrual_factor(self, accrued_flag: float) -> float:
+        def try_map_tenor_to_yf(t: str) -> float | None:
+            t = t.upper().strip()
+            aliases = {
+                "1M": 1.0/12.0, "1MO": 1.0/12.0,
+                "3M": 0.25,     "3MO": 0.25,
+                "6M": 0.5,      "6MO": 0.5,
+                "12M": 1.0,     "1Y": 1.0
+            }
+            if t in aliases:
+                return aliases[t]
+            if t.endswith("M"):
+                try:
+                    return int(t[:-1]) / 12.0
+                except Exception:
+                    return None
+            if t.endswith("Y"):
+                try:
+                    return float(int(t[:-1]))
+                except Exception:
+                    return None
+            return None
+        
+        if accrued_flag == -1.0 and self.termOrEnd_.isTerm():
+            tenor_str = str(self.termOrEnd_.getTerm())
+            yf = try_map_tenor_to_yf(tenor_str)
+            if yf is not None:
+                return yf
+        
+        return accrued(self.effDate_, self.maturityDate_, self.conv.accrual_basis)
 
     def getFutureConvention(self):
         # based on the inputs to deduce the data convention object
@@ -317,7 +326,10 @@ class ProductRfrFuture(Product):
         reg = DataConventionRegistry()
         tenor = "3M"
         if isinstance(self.termOrEnd_, TermOrTerminationDate) and self.termOrEnd_.isTerm():
-            tenor = self.termOrEnd_.getTerm().upper()
+            t = self.termOrEnd_.getTerm()
+            tenor = str(t).upper()
+            if tenor.endswith("MO"):
+                tenor = tenor[:-2] + "M"
         key = f"SOFR-FUTURE-{tenor}"
         try:
             return reg.get(key)
@@ -569,6 +581,143 @@ class ProductOvernightSwap(Product):
     @property
     def payFixed(self) -> bool:
         return self.payFixed_
+    
+    def accept(self, visitor: ProductVisitor):
+        return visitor.visit(self)
+    
+
+class ProductRfrSwap(Product):
+    prodType = "ProductRfrSwap"
+    
+    def __init__(
+        self, 
+        effectiveDate: str,
+        termOrEnd: Union[str, TermOrTerminationDate],
+        index: str,
+        fixedRate: float,
+        position: str,
+        notional: Optional[float] = None,
+        ois_spread: float = 0.0,
+        compounding: Optional[str] = None
+    ) -> None:
+        
+        self.effDate_ = Date(effectiveDate)
+        self.termOrEnd_ = termOrEnd if isinstance(termOrEnd, TermOrTerminationDate) else TermOrTerminationDate(termOrEnd)
+        self.indexKey_ = index
+        self.fixedRate_ = float(fixedRate)
+        self.oisIndex_ = IndexRegistry().get(index)
+        self.position_ = LongOrShort(position)
+        self.payFixed_ = (position.upper() == 'SHORT')
+        float_position = "LONG" if self.payFixed_ else "SHORT"
+        
+        self.conv_ = self.getSwapConvention()
+        self.compounding_ = (compounding or self.conv_.ois_compounding).upper()
+        self.notional_ = float(notional) if notional is not None else float(self.conv_.contractual_notional)
+        
+        cal = self.oisIndex_.fixingCalendar()
+        if self.termOrEnd_.isTerm():
+            tenor = self.termOrEnd_.getTerm()
+            self.maturityDate_ = Date(cal.advance(self.effDate_, tenor, self.oisIndex_.businessDayConvention()))
+        else:
+            self.maturityDate_ = self.termOrEnd_.getDate()
+        
+        freq = str(self.conv_.accrual_period).upper().strip()
+        if freq.endswith("MO"):
+            freq = freq[:-2] + "M"
+        elif freq.endswith("Y"):
+            n = int(freq[:-1])
+            freq = f"{n * 12}M"
+        
+        accrualBasis = self.conv_.accrual_basis
+        holConv = self.conv_.payment_hol_conv
+        bizConv = self.conv_.payment_biz_day_conv
+        ccy_code = self.oisIndex_.currency().code()
+        
+        self.floatingLeg = InterestRateStream(
+            startDate=self.effDate_.ISO(),
+            endDate=self.maturityDate_.ISO(),
+            frequency=freq,
+            iborIndex=None,
+            overnightIndex=self.indexKey_,
+            fixedRate=None,
+            ois_compounding=self.compounding_,
+            ois_spread=ois_spread,
+            notional=self.notional_,
+            position=float_position,
+            currency=ccy_code,
+            holConv=holConv,
+            bizConv=bizConv,
+            accrualBasis=accrualBasis,
+        )
+        
+        self.fixedLeg = InterestRateStream(
+            startDate=self.effDate_.ISO(),
+            endDate=self.maturityDate_.ISO(),
+            frequency=freq,
+            iborIndex=None,
+            overnightIndex=None,
+            fixedRate=self.fixedRate_,
+            notional=self.notional_,
+            position=position,
+            currency=ccy_code,
+            holConv=holConv,
+            bizConv=bizConv,
+            accrualBasis=accrualBasis,
+        )
+        
+        super().__init__(
+            self.effDate_,
+            self.maturityDate_,
+            self.notional_,
+            position,
+            self.floatingLeg.element(0).currency
+        )
+    
+    def getSwapConvention(self):
+        reg = DataConventionRegistry()
+        ccy = self.oisIndex_.currency().code()
+        rfr = self.indexKey_.split('-')[0].upper()
+        key = f"{ccy}-{rfr}-OIS"
+        try:
+            return reg.get(key)
+        except Exception:
+            return reg.get("USD-SOFR-OIS")
+    
+    def floatingLegCashflow(self, i: int) -> Product:
+        assert 0 <= i < self.floatingLeg.count
+        return self.floatingLeg.element(i)
+    
+    def fixedLegCashflow(self, i: int) -> Product:
+        assert 0 <= i < self.fixedLeg.count
+        return self.fixedLeg.element(i)
+    
+    @property
+    def effectiveDate(self) -> Date:
+        return self.effDate_
+    
+    @property
+    def maturityDate(self) -> Date:
+        return self.maturityDate_
+    
+    @property
+    def fixedRate(self) -> float:
+        return self.fixedRate_
+    
+    @property
+    def index(self) -> str:
+        return self.indexKey_
+    
+    @property
+    def payFixed(self) -> bool:
+        return self.payFixed_
+    
+    @property
+    def compounding(self) -> str:
+        return self.compounding_
+    
+    @property
+    def swapConv(self):
+        return self.conv_
     
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)

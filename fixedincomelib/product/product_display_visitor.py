@@ -6,7 +6,7 @@ from fixedincomelib.product.portfolio import ProductPortfolio
 from fixedincomelib.product.linear_products import (
     ProductBulletCashflow, ProductIborCashflow, ProductOvernightIndexCashflow,
     ProductFuture, ProductRfrFuture, InterestRateStream,
-    ProductIborSwap, ProductOvernightSwap)
+    ProductIborSwap, ProductOvernightSwap, ProductRfrSwap)
 from fixedincomelib.product.non_linear_products import (
     ProductIborCapFloorlet, ProductOvernightCapFloorlet,
     CapFloorStream, ProductIborCapFloor, ProductOvernightCapFloor,
@@ -88,6 +88,7 @@ class ProductDisplayVisitor(ProductVisitor):
             ProductRfrFuture:             ProductDisplayVisitor._render_rfr_future,
             ProductIborSwap:              ProductDisplayVisitor._render_ibor_swap,
             ProductOvernightSwap:         ProductDisplayVisitor._render_ois_swap,
+            ProductRfrSwap:               ProductDisplayVisitor._render_rfr_swap,
             ProductIborCapFloorlet:       ProductDisplayVisitor._render_ibor_caplet,
             ProductOvernightCapFloorlet:  ProductDisplayVisitor._render_ois_caplet,
             ProductIborCapFloor:          ProductDisplayVisitor._render_ibor_cap,
@@ -169,6 +170,16 @@ class ProductDisplayVisitor(ProductVisitor):
             ("MaturityDate", _iso(p.maturityDate)),
             ("FixedRate", p.fixedRate),
             ("Index", p.index),
+            ("PayFixed", p.payFixed),
+        ]
+    
+    def _render_rfr_swap(self, p: ProductRfrSwap) -> List[Tuple[str, Any]]:
+        return [
+            ("EffectiveDate", _iso(p.effectiveDate)),
+            ("MaturityDate", _iso(p.maturityDate)),
+            ("FixedRate", p.fixedRate),
+            ("Index", p.index),
+            ("Compounding", p.compounding),
             ("PayFixed", p.payFixed),
         ]
 
