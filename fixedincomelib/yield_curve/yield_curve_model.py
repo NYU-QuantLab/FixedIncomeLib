@@ -244,45 +244,67 @@ class YieldCurve(Model):
         else:
             grad[block] = float(scaler) * dF
 
-    def jacobian(self, space: str ="pv"):
+    def jacobian(self, space: str = "pv"):
+        """
+        Parameters
+        ----------
+        space : {"pv", "quote"}
+            - "pv":    rows are d(PV_i)/d(theta_j) for each calibration instrument i.
+                    Returns (J_pv, S, row_labels), where
+                        J_pv : (n_instruments, n_params)
+                        S    : (n_instruments,) scaling factors to convert PV-row to quote-row
+                        row_labels : list of row identifiers (per pillar).
+            - "quote": rows are d(quote_i)/d(theta_j) = (1/S_i) * d(PV_i)/d(theta_j)
+                    where S_i is chosen per instrument type.
+        """
         registry = ValuationEngineRegistry()
-        
+
         components: List[ModelComponent] = self._components_in_order()
         n = sum(len(getattr(comp, "nodes", [])) for comp in components)
-        J = np.zeros((n,n), dtype = float)
-        S = np.ones(n, float)
+        J = np.zeros((n, n), dtype=float)
+        S = np.ones(n, dtype=float)
 
         self._jacobian_row_labels = []
-        r=0
+        r = 0
 
         for comp in components:
             vp = {"FUNDING INDEX": comp.target}
             for node in getattr(comp, "nodes", []):
                 prod = node.instrument
                 ve = registry.new_valuation_engine(self, vp, prod)
-                ve.calculateFirstOrderRisk(gradient=None, scaler=1.0, accumulate=False)
-                J[r,:] = self.getGradientArray()
 
+                # Gradient of instrument PV w.r.t. curve parameters
+                ve.calculateFirstOrderRisk(gradient=None, scaler=1.0, accumulate=False)
+                J[r, :] = self.getGradientArray()
                 prod_type = getattr(prod, "prodType", "")
+
                 if prod_type == "ProductRfrFuture":
-                    # If your quote is the *price/strike*, this is negative
-                    S[r] = - float(prod.notional)
+                    df_end = float(self.discountFactor(comp.target, prod.maturityDate))
+                    S[r] = - float(prod.notional) * df_end  
+
                 elif prod_type == "ProductOvernightSwap":
-                    ve.calculateValue()  # ensure annuity is prepared
-                    ann = ve.annuity()   # dimensionless sum of alpha*DF
+                    ve.calculateValue()          
+                    ann = float(ve.annuity())    
                     pay_fixed = getattr(prod, "payFixed", False)
                     sign = -1.0 if pay_fixed else +1.0
-                    S[r] = sign * float(prod.notional) * float(ann)
-                
+                    S[r] = sign * float(prod.notional) * ann
+
                 node_id = getattr(node, "node_id", str(getattr(node, "pillar_date", "")))
-                self._jacobian_row_labels.append((node_id))
+                self._jacobian_row_labels.append(node_id)
                 r += 1
 
+        # Clean tiny noise
         J[np.abs(J) < 1e-12] = 0.0
-        if space.lower() == "quote":
-            J = (J.T / S).T   # row-wise divide
 
-        return (J, S, self._jacobian_row_labels) if space.lower()=="pv" else J
+        space_l = space.lower()
+        if space_l == "quote":
+            J_q = (J.T / S).T
+            return J_q
+
+        if space_l == "pv":
+            return J, S, self._jacobian_row_labels
+
+        raise ValueError("space must be one of: 'pv', 'quote'")
 
 class YieldCurveModelComponent(ModelComponent):
 
