@@ -40,7 +40,6 @@ class ValuationEngineProductBulletCashflow(ValuationEngine):
                                                                     scaler=scale,
                                                                     accumulate=accumulate)
             self.firstOrderRisk_ = self.model.getGradientArray()
-            print(self.firstOrderRisk_)
 
 ValuationEngineRegistry().insert(
     YieldCurve.modelType,
@@ -221,7 +220,6 @@ class ValuationEngineProductOvernightIndexCashflow(ValuationEngine):
                                                              scaler = forward_scaler,
                                                              accumulate = True)                
         self.firstOrderRisk_ = self.model.getGradientArray()
-        print(self.firstOrderRisk_)
 
 ValuationEngineRegistry().insert(
     YieldCurve.modelType,
