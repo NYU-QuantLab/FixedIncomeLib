@@ -329,13 +329,14 @@ class InterestRateStream(ProductPortfolio):
                 cf = ProductIborCashflow(Date(row.StartDate), Date(row.EndDate), iborIndex, 0.0, notional, position, Date(row.PaymentDate))
             elif overnightIndex:
                 cf = ProductOvernightIndexCashflow(Date(row.StartDate), Date(row.EndDate), overnightIndex, ois_compounding, ois_spread, notional, position, Date(row.PaymentDate))
+                print(notional)
             else:
                 alpha_i = accrued(Date(row.StartDate), Date(row.EndDate))
                 coupon_amt = notional * (fixedRate or 0.0) * alpha_i
                 cf = ProductBulletCashflow(Date(row.EndDate), currency, coupon_amt, position, Date(row.PaymentDate))
             prods.append(cf)
             weights.append(1.0)
-        print(prods)
+    
 
         super().__init__(prods, weights)
 
