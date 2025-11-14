@@ -335,6 +335,7 @@ class InterestRateStream(ProductPortfolio):
                 cf = ProductBulletCashflow(Date(row.EndDate), currency, coupon_amt, position, Date(row.PaymentDate))
             prods.append(cf)
             weights.append(1.0)
+        print(prods)
 
         super().__init__(prods, weights)
 
