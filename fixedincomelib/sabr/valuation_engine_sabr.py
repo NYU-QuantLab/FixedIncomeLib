@@ -1,7 +1,8 @@
 from typing import Any, Dict
 from fixedincomelib.sabr import SabrModel
 from fixedincomelib.analytics import SABRCalculator
-from fixedincomelib.valuation import (ValuationEngine, ValuationEngineRegistry, IndexManager)
+from fixedincomelib.market import IndexManager
+from fixedincomelib.valuation import (ValuationEngine, ValuationEngineRegistry)
 from fixedincomelib.product import (LongOrShort, ProductIborCapFloorlet, ProductOvernightCapFloorlet, ProductIborCapFloor, ProductOvernightCapFloor, ProductIborSwaption, ProductOvernightSwaption)
 from fixedincomelib.date.utilities import accrued
 import warnings

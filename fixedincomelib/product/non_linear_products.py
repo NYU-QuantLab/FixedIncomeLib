@@ -7,7 +7,7 @@ from fixedincomelib.date.utilities import makeSchedule, business_day_schedule
 from fixedincomelib.product.portfolio import ProductPortfolio
 from typing import List, Optional, Union
 from fixedincomelib.product.linear_products import ProductIborSwap,ProductOvernightSwap
-from fixedincomelib.valuation import IndexManager
+from fixedincomelib.market import IndexManager
 
 class ProductIborCapFloorlet(Product):
     prodType = "ProductIborCapFloorlet"

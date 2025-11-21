@@ -1,10 +1,11 @@
 from typing import Optional
 import numpy as np
 import pandas as pd
+from fixedincomelib.market import IndexManager
 from fixedincomelib.yield_curve.yield_curve_model import YieldCurve
 from fixedincomelib.product import (LongOrShort, ProductIborCashflow, ProductBulletCashflow, ProductFuture, ProductRfrFuture,ProductIborSwap,ProductOvernightSwap,
                         ProductOvernightIndexCashflow, ProductPortfolio)
-from fixedincomelib.valuation import (ValuationEngine, ValuationEngineRegistry, IndexManager)
+from fixedincomelib.valuation import (ValuationEngine, ValuationEngineRegistry)
 from fixedincomelib.date.utilities import accrued
 
 class ValuationEngineProductBulletCashflow(ValuationEngine):

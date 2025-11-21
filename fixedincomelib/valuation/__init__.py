@@ -1,3 +1,2 @@
 from fixedincomelib.valuation.valuation_engine import ValuationEngine
 from fixedincomelib.valuation.valuation_engine_registry import ValuationEngineRegistry
-from fixedincomelib.valuation.index_fixing_registry import IndexManager
