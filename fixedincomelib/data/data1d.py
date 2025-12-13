@@ -8,7 +8,7 @@ class Data1D(MarketData):
         self,
         data_type: str,
         data_convention: str,
-        axis: Sequence[float],
+        axis: Sequence[float], # wrong, this should be str
         values: Sequence[float]
     ):
         super().__init__(data_type, data_convention)
@@ -17,12 +17,21 @@ class Data1D(MarketData):
         self.axis = list(axis)
         self.values = list(values)
 
+    # Jay : do we need it ? 
     def __repr__(self) -> str:
         return (
             f"Data1D(type={self.data_type!r}, "
             f"conv={self.data_convention!r}, "
             f"points={len(self.axis)})"
         )
+    
+    @property
+    def axis(self):
+        pass
+
+    @property
+    def values(self):
+        pass
 
     @classmethod
     def createDataObject(

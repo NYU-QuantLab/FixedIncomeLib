@@ -12,6 +12,11 @@ class DataCollection:
                 raise KeyError(f"Duplicate data for key {key}")
             self.dataMap[key] = each
 
+    ### accessor
+    ### key, value => data object
+
+    
+
     def getDataFromDataCollection(
         self,
         data_type: str,
