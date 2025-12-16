@@ -2,7 +2,32 @@ from typing import Optional
 import QuantLib as ql
 
 ### below are some wrappers to allow str -> quantlib object conversion
-### businessdayconvention, holidayconvention, accrualbasis
+### currency, businessdayconvention, holidayconvention, accrualbasis
+
+class Currency:
+
+    def __init__(self, input : str) -> None:
+
+        self.ccy = None
+
+        if input.upper() == 'USD':
+            self.ccy = ql.USDCurrency()
+        elif input.upper() == 'CAD':
+            self.ccy = ql.CADCurrency()
+        elif input.upper() == 'GBP':
+            self.ccy = ql.GBPCurrency()
+        elif input.upper() == 'EUR':
+            self.ccy = ql.EURCurrency()
+        elif input.upper() == 'JPY':
+            self.ccy = ql.JPYCurrency()
+        elif input.upper() == 'AUD':
+            self.ccy = ql.AUDCurrency()
+        else:
+            raise Exception(input + ' is not current supported currency.')
+
+    @property
+    def value(self):
+        return self.ccy
 
 class BusinessDayConvention:
     

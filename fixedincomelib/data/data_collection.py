@@ -1,9 +1,10 @@
-from typing import Dict, Tuple, Iterable
-from fixedincomelib.data.base import MarketData
+from typing import Dict, Tuple, List
+from fixedincomelib.data.basics import DataObject
 
 class DataCollection:
 
-    def __init__(self, dataList: Iterable[MarketData]):
+    def __init__(self, dataList: List[DataObject]):
+
         self.dataMap: Dict[Tuple[str, str], MarketData] = {}
 
         for each in dataList:
@@ -11,11 +12,6 @@ class DataCollection:
             if key in self.dataMap:
                 raise KeyError(f"Duplicate data for key {key}")
             self.dataMap[key] = each
-
-    ### accessor
-    ### key, value => data object
-
-    
 
     def getDataFromDataCollection(
         self,
@@ -29,5 +25,3 @@ class DataCollection:
     
     def clear(self) -> None:
         self.dataMap.clear()
-
-    get = getDataFromDataCollection
