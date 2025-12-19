@@ -1,8 +1,8 @@
 import pandas as pd
-import QuantLib as ql
-from QuantLib import Schedule, Period, Days, Following, DateGeneration
 from typing import Optional
-from fixedincomelib.date.classes import (Date, Period)
+import QuantLib as ql
+from QuantLib import Period
+from fixedincomelib.date.basics import (Date, Period)
 from fixedincomelib.market import *
 
 def addPeriod(start_date : str, term : str, biz_conv : Optional[str]='NONE', hol_conv : Optional[str]='NONE', endOfMonth : Optional[bool]=False):

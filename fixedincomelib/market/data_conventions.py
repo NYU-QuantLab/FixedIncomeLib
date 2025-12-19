@@ -21,6 +21,12 @@ class DataConvention(ABC):
     @property
     def type(self):
         return self.conv_type
+    
+    def display(self):
+        to_print = []
+        for k, v in self.content.items():
+            to_print.append([k, v])
+        return pd.DataFrame(to_print, columns=['Name', 'Value'])
 
 ### specific examples
 class DataConventionRFRFuture(DataConvention):
@@ -151,6 +157,124 @@ class DataConventionRFRSwap(DataConvention):
     def compounding_method(self):
         return self.compounding_method_
 
+class DataConventionRFRSwaption(DataConvention):
+
+    type = 'RFR SWAPTION'
+
+    def __init__(self, unique_name, content):
+
+        if len(content) != 4:
+            raise ValueError(f"{unique_name}: content should have 4 fields, got {len(content)}")
+
+        self.index_ = None
+        self.payment_offset_ = None
+        self.payment_business_day_convention_ = None
+        self.payment_holiday_convention_ = None
+        
+        upper_content = {k.upper(): v for k,v in content.items()}
+        for k, v in upper_content.items():
+            if k.upper() == "INDEX": 
+                self.index_ = v
+            elif k == "PAYMENT_OFFSET":
+                self.payment_offset_ = v
+            elif k == "PAYMENT_BUSEINSS_DAY_CONVENTION":
+                self.payment_business_day_convention_ = v
+            elif k == "PAYMENT_HOLIDAY_CONVENTION":
+                self.payment_holiday_convention_ = v
+                
+        super().__init__(unique_name, DataConventionRFRSwaption.type, self.__dict__.copy())
+
+    @property
+    def index(self):
+        return IndexRegistry().get(self.index_)
+    
+    @property
+    def payment_offset(self):
+        return Period(self.payment_offset_)
+    
+    @property
+    def business_day_convention(self):
+        return BusinessDayConvention(self.payment_business_day_convention_)
+    
+    @property
+    def holiday_convention(self):
+        return HolidayConvention(self.payment_holiday_convention_)
+
+class DataConventionRFRCapFloor(DataConvention):
+
+    type = 'RFR CAPFLOOR'
+
+    def __init__(self, unique_name, content):
+
+        if len(content) != 4:
+            raise ValueError(f"{unique_name}: content should have 4 fields, got {len(content)}")
+
+        self.index_ = None
+        self.payment_offset_ = None
+        self.payment_business_day_convention_ = None
+        self.payment_holiday_convention_ = None
+        
+        upper_content = {k.upper(): v for k,v in content.items()}
+        for k, v in upper_content.items():
+            if k.upper() == "INDEX": 
+                self.index_ = v
+            elif k == "PAYMENT_OFFSET":
+                self.payment_offset_ = v
+            elif k == "PAYMENT_BUSEINSS_DAY_CONVENTION":
+                self.payment_business_day_convention_ = v
+            elif k == "PAYMENT_HOLIDAY_CONVENTION":
+                self.payment_holiday_convention_ = v
+                
+        super().__init__(unique_name, DataConventionRFRSwaption.type, self.__dict__.copy())
+
+    @property
+    def index(self):
+        return IndexRegistry().get(self.index_)
+    
+    @property
+    def payment_offset(self):
+        return Period(self.payment_offset_)
+    
+    @property
+    def business_day_convention(self):
+        return BusinessDayConvention(self.payment_business_day_convention_)
+    
+    @property
+    def holiday_convention(self):
+        return HolidayConvention(self.payment_holiday_convention_)
+
+class DataConventionRFRJump(DataConvention):
+
+    type = 'JUMP'
+
+    def __init__(self, unique_name, content):
+
+        if len(content) != 2:
+            raise ValueError(f"{unique_name}: content should have 4 fields, got {len(content)}")
+
+        self.index_ = None
+        self.jupm_size_ = 1e4
+
+        upper_content = {k.upper(): v for k,v in content.items()}
+        for k, v in upper_content.items():
+            if k.upper() == "INDEX": 
+                self.index_ = v
+            elif k == "JUMP_SIZE":
+                self.jupm_size_ = v
+                
+        super().__init__(unique_name, DataConventionRFRJump.type, self.__dict__.copy())
+
+    @property
+    def index(self):
+        return IndexRegistry().get(self.index_)
+    
+    @property
+    def jump_size(self):
+        return self.jupm_size_
+
 ### registry
 DataConventionRegFunction().register(DataConventionRFRFuture.type, DataConventionRFRFuture)
 DataConventionRegFunction().register(DataConventionRFRSwap.type, DataConventionRFRSwap)
+DataConventionRegFunction().register(DataConventionRFRSwaption.type, DataConventionRFRSwaption)
+DataConventionRegFunction().register(DataConventionRFRCapFloor.type, DataConventionRFRCapFloor)
+DataConventionRegFunction().register(DataConventionRFRJump.type, DataConventionRFRJump)

@@ -18,10 +18,11 @@ class Registry(ABC):
     _registry_type = None
 
     def __new__(cls, file_name : str, registry_type : str, file_type : Optional[str]='json', **kwargs) -> Self:
+        
         if cls._instance is None:
             # init
             obj = super().__new__(cls)
-            obj._map = {}
+            obj._map = dict()
             # read files
             path = os.path.join(os.path.pardir, 'static_files')
             file = os.path.join(path, f'{file_name}.{file_type}')
@@ -40,10 +41,10 @@ class Registry(ABC):
     
     @abstractmethod
     def register(self, key : Any, value : Any) -> None:
-        if key in self._map:
+        if self.exists(key):
             raise ValueError(f'duplicate key : {key}')
-        
-    def get(self, key: Any) -> Any:
+            
+    def get(self, key: Any, **args) -> Any:
         try: 
             return self._map[key.upper()]
         except:
@@ -53,14 +54,25 @@ class Registry(ABC):
         self._map.clear()
 
     def erase(self, key : Any) -> None:
-        if key not in self._map:
+        if not self.exists(key):
             raise KeyError('Cannot find this key.')
         self._map.pop(key)
     
+    def exists(self, key : Any) -> None:
+        return key in self._map
+
     def display_registry(self) -> None:
         for k, v in self._map.items():
             print(f'Key : {k}, Value : {v}.')
 
+    @classmethod
+    def reset_registry(cls) -> None:
+        cls._instance = None
+
     @property
     def registry_name(self):
         return self._registry_type
+    
+    @property
+    def get_keys(self):
+        return list(self._map.keys())

@@ -7,7 +7,7 @@ from fixedincomelib.date.utilities import makeSchedule, business_day_schedule
 from fixedincomelib.product.portfolio import ProductPortfolio
 from typing import List, Optional, Union
 from fixedincomelib.product.linear_products import ProductIborSwap,ProductOvernightSwap
-from fixedincomelib.market import IndexManager
+from fixedincomelib.market import IndexFixingsManager
 
 class ProductIborCapFloorlet(Product):
     prodType = "ProductIborCapFloorlet"
@@ -59,7 +59,6 @@ class ProductIborCapFloorlet(Product):
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
-
 
 class ProductOvernightCapFloorlet(Product):
     prodType = "ProductOvernightCapFloorlet"
@@ -173,7 +172,6 @@ class CapFloorStream(ProductPortfolio):
     def cashflow(self, i: int) -> Product:
         return self.element(i)
 
-
 class ProductIborCapFloor(Product):
     prodType = "ProductIborCapFloor"
 
@@ -237,7 +235,6 @@ class ProductIborCapFloor(Product):
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
-
 
 class ProductOvernightCapFloor(Product):
     prodType = "ProductOvernightCapFloor"
@@ -319,7 +316,6 @@ class ProductOvernightCapFloor(Product):
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
 
-
 # ------------------------
 # Swaption Classes
 # ------------------------
@@ -390,7 +386,6 @@ class ProductIborSwaption(Product):
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
-
 
 class ProductOvernightSwaption(Product):
     prodType = "ProductOvernightSwaption"

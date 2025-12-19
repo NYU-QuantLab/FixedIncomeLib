@@ -1,17 +1,34 @@
 import pandas as pd
-from typing import Tuple, Any
+from typing import Tuple, Any, Self
 from abc import ABC, abstractclassmethod, abstractmethod
+from fixedincomelib.utilities import Registry
 from fixedincomelib.market import DataConvention
+
+
+class DataObjectDeserializerRegistry(Registry):
+    
+    def __new__(cls) -> Self:
+        return super().__new__(cls, '', cls.__name__)
+
+    def register(self, key : Any, value : Any) -> None:
+        super().register(key, value)
+        self._map[key] = value
+
 
 class DataObject(ABC):
 
-    _version = 1
+    _version = -1
+    _data_shape = ''
 
     def __init__(self, data_type: str, data_convention: DataConvention):
         self.data_type_ = data_type
         self.data_convention_ = data_convention
-        self.data_identifier_ = (data_type, data_convention.name)
+        self.data_identifier_ = (data_type.upper(), data_convention.name.upper())
 
+    @property
+    def data_shape(self):
+        return self._data_shape
+         
     @property
     def data_identifier(self) -> Tuple[str, str]:
         return self.data_identifier_
@@ -21,8 +38,8 @@ class DataObject(ABC):
         return self.data_type_
 
     @property
-    def data_convention(self) -> str:
-        return self.data_convention_.name
+    def data_convention(self) -> DataConvention:
+        return self.data_convention_
 
     @abstractmethod
     def display(self) -> pd.DataFrame:
@@ -35,3 +52,6 @@ class DataObject(ABC):
     @abstractclassmethod
     def deserialize(cls, input_dict : dict) -> "DataObject":
         pass
+
+
+

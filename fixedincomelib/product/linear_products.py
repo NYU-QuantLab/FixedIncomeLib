@@ -6,7 +6,7 @@ from fixedincomelib.market import (IndexRegistry, Currency)
 from typing import List, Optional, Union
 from fixedincomelib.date.utilities import makeSchedule,accrued
 from fixedincomelib.product.portfolio import ProductPortfolio
-from fixedincomelib.conventions.data_conventions import DataConventionRegistry
+from fixedincomelib.market.data_conventions import DataConventionRegistry
 
 # -------------------------
 # Atomic Cash-Flow Classes
@@ -486,7 +486,6 @@ class ProductIborSwap(Product):
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
 
-
 class ProductOvernightSwap(Product):
     prodType = "ProductOvernightSwap"
 
@@ -585,7 +584,6 @@ class ProductOvernightSwap(Product):
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
     
-
 class ProductRfrSwap(Product):
     prodType = "ProductRfrSwap"
     

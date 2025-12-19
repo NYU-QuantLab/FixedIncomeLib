@@ -20,5 +20,27 @@
       "payment_business_day_convention": "F",
       "payment_holiday_convention": "USGS",
       "contractual_notional" : 1000000
+    },
+    "USD-SOFR-SWAPTION":
+    {
+      "type" : "RFR SWAPTION",
+      "index" : "SOFR-1B",
+      "payment_offset": "2B",
+      "payment_business_day_convention": "F",
+      "payment_holiday_convention": "USGS"
+    },
+    "USD-SOFR-CAPFLOOR":
+    {
+      "type" : "RFR CAPFLOOR",
+      "index" : "SOFR-1B",
+      "payment_offset": "2B",
+      "payment_business_day_convention": "F",
+      "payment_holiday_convention": "USGS"
+    },
+    "USD-SOFR-JUMP":
+    {
+      "type" : "JUMP",
+      "index" : "SOFR-1B",
+      "jump_size" : 10000
     }
 }
