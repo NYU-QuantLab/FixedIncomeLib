@@ -1,5 +1,3 @@
-from calendar import Calendar
-from curses import is_term_resized
 from typing import Union, Dict, Any, Tuple
 from datetime import datetime
 from fixedincomelib.market import *
