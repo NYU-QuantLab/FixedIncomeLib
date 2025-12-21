@@ -1,173 +1,121 @@
-from typing import Union, Dict, Any
+from calendar import Calendar
+from curses import is_term_resized
+from typing import Union, Dict, Any, Tuple
 from datetime import datetime
-from fixedincomelib.date import TermOrTerminationDate, Date
 from fixedincomelib.market import *
-from fixedincomelib.product.linear_products import ProductRfrFuture, ProductRfrSwap
-from fixedincomelib.product.product_display_visitor import ProductDisplayVisitor
-
+from fixedincomelib.date import (TermOrTerminationDate, Date, add_period)
+from fixedincomelib.product.product_interfaces import ProductBuilderRegistry
+from fixedincomelib.product.linear_products import (ProductRFRFuture, ProductRFRSwap)
+from fixedincomelib.product.utilities import (LongOrShort, PayOrReceive)
 
 class ProductFactory:
-    _BUILDER_REGISTRY: Dict[str, str] = {
-        "RFR FUTURE": "createRFRFuture",
-        "RFR SWAP": "createRFRSwap",
-    }
-
-    @classmethod
-    def registerBuilder(cls, data_type: str, builder_method_name: str):
-        cls._BUILDER_REGISTRY[data_type] = builder_method_name
-
-    @classmethod
-    def getSupportedTypes(cls) -> list:
-        return list(cls._BUILDER_REGISTRY.keys())
-
 
     @classmethod
     def createProductFromDataConvention(
         cls,
+        value_date : Date,
         axis1: str,
-        dataConvention: Union[str, DataConvention],
+        data_convention: DataConvention,
         values: float,
-        **kwargs: Any,
-    ):
-        if isinstance(dataConvention, str):
-            convention_obj = DataConventionRegistry().get(dataConvention)
-            if convention_obj is None:
-                raise ValueError(f"Data convention '{dataConvention}' cannot be found in registry.")
+        **kwargs: Any):
+
+        convention_obj : DataConvention = data_convention
+        prod_type = convention_obj.type()
+        func = ProductBuilderRegistry().get(prod_type)
+        return func(value_date, axis1, convention_obj, values, **kwargs)
+
+    @classmethod
+    def create_rfr_future(
+        cls,
+        value_date : Date,
+        axis1: str,
+        data_convention: DataConventionRFRFuture,
+        values: float,
+        **kwargs: Any) -> ProductRFRFuture:
+
+        term_or_effective_date, term_or_termnation_date = \
+            ProductFactory._tokenize_axis1(axis1)
+        if term_or_effective_date.is_term():
+            raise Exception('Effective date is not valid.')
+        if term_or_termnation_date is None:
+            raise Exception('Term or Termination date is missing.')
+        long_or_short = LongOrShort.from_string(kwargs.get('long_or_short', 'long'))
+        amount = kwargs.get('amount', data_convention.contractual_notional)
+        return ProductRFRFuture(
+            effective_date=term_or_effective_date.get_date(),
+            term_or_termination_date=term_or_termnation_date,
+            future_conv=data_convention.name,
+            long_or_short=long_or_short,
+            amount=amount,
+            strike=values)
+
+    @classmethod
+    def create_rfr_swap(
+        cls,
+        value_date : Date,
+        axis1: str,
+        data_convention: DataConventionRFRSwap,
+        values: float,
+        **kwargs: Any) -> ProductRFRSwap:
+
+        term_or_effective_date, term_or_termination_date = \
+              ProductFactory._tokenize_axis1(axis1)
+        
+        pay_offset = data_convention.payment_offset
+        on_index_str = data_convention.index_str
+        on_index = data_convention.index
+        accrual_period = data_convention.acc_period
+        accrual_basis = data_convention.acc_basis
+        pay_buinsess_day_convention = data_convention.business_day_convention
+        pay_hoiday_convention = data_convention.holiday_convention 
+        pay_or_rec = kwargs.get('pay_or_rec', 'receive')
+        spread = kwargs.get('spread', 0.)
+        compounding_method = CompoundingMethod.from_string(kwargs.get('compound_method', 'compound'))
+
+        effective_date = value_date
+        if term_or_termination_date is None:
+            # spot starting
+            effective_date = on_index.fixingDate(value_date)
+            term_or_termination_date = term_or_effective_date
         else:
-            convention_obj = dataConvention
+            # forwad starting
+            if term_or_effective_date.is_term():
+                this_date = on_index.fixingDate(value_date)
+                effective_date = add_period(
+                    this_date,
+                    term_or_effective_date.get_term(),
+                    on_index.businessDayConvention(),
+                    pay_hoiday_convention) # fix holiday convention
+            else:
+                effective_date = term_or_effective_date.get_date()
 
-        data_type = convention_obj.data_type
+        return ProductRFRSwap(
+            effective_date=effective_date,
+            term_or_termination_date=term_or_termination_date,
+            payment_off_set=pay_offset,
+            on_index=on_index_str,
+            fixed_rate=values,
+            pay_or_rec=PayOrReceive.from_string(pay_or_rec),
+            notional=kwargs.get('notinoal', 1e6),
+            accrual_period=accrual_period,
+            accrual_basis=accrual_basis,
+            floating_leg_accrual_period=accrual_period,
+            pay_business_day_convention=pay_buinsess_day_convention,
+            pay_holiday_convention=pay_hoiday_convention,
+            spread=spread,
+            compounding_method=compounding_method)
 
-        builder_method_name = cls._BUILDER_REGISTRY.get(data_type)
-        if builder_method_name is None:
-            raise ValueError(
-                f"Data convention type: '{data_type}' not in _BUILDER_REGISTRY. "
-                f"_BUILDER_REGISTRY includes: {list(cls._BUILDER_REGISTRY.keys())}"
-            )
-
-        builder_method = getattr(cls, builder_method_name)
-        return builder_method(axis1, convention_obj, values, **kwargs)
-
-
-    @classmethod
-    def createRFRFuture(
-        cls,
-        axis1: str,
-        dataConvention: DataConvention,
-        values: float,
-        **kwargs: Any,
-    ) -> ProductRfrFuture:
-        effectiveDate, termOrEnd = cls._parseAxis1(axis1)
-
-        index = dataConvention.index
-        compounding = cls._inferCompoundingMethod(dataConvention)
-
-        longOrShort = kwargs.get("longOrShort")
-        if longOrShort is None:
-            raise ValueError("longOrShort parameter is missing for RFR Future")
-
-        price = float(values)
-        strike = kwargs.get("strike", price)
-
-        contractualSize = dataConvention.contractual_notional
-        notional = kwargs.get("notional", contractualSize)
-
-        accrued_flag = kwargs.get("accrued_flag", -1.0)
-
-        return ProductRfrFuture(
-            effectiveDate=effectiveDate,
-            termOrEnd=termOrEnd,
-            index=index,
-            compounding=compounding,
-            longOrShort=longOrShort,
-            strike=strike,
-            notional=notional,
-            contractualSize=contractualSize,
-            accrued_flag=accrued_flag,
-        )
-
-
-    @classmethod
-    def createRFRSwap(
-        cls,
-        axis1: str,
-        dataConvention: DataConvention,
-        values: float,
-        **kwargs: Any,
-    ) -> ProductRfrSwap:
-        effectiveDate, termOrEnd = cls._parseAxis1(axis1)
-
-        if effectiveDate is None:
-            effectiveDate = Date.todaysDate().ISO()
-
-        index = dataConvention.index
-        compounding = dataConvention.ois_compounding
-
-        position = kwargs.get("longOrShort")
-        if position is None:
-            raise ValueError("longOrShort parameter is missing for RFR Swap")
-
-        notional = kwargs.get("notional", dataConvention.contractual_notional)
-        ois_spread = kwargs.get("ois_spread", 0.0)
-
-        return ProductRfrSwap(
-            effectiveDate=effectiveDate,
-            termOrEnd=termOrEnd,
-            index=index,
-            fixedRate=values,
-            position=position,
-            notional=notional,
-            ois_spread=ois_spread,
-            compounding=compounding,
-        )
-    
-
-    @classmethod
-    def _parseAxis1(cls, axis1: str) -> tuple:
+    ### utilities    
+    @staticmethod
+    def _tokenize_axis1(axis1: str):
+        
         axis1 = axis1.strip()
-
         if "x" in axis1.lower():
-            parts_raw = axis1.replace("X", "x").split("x")
-            parts = [p.strip() for p in parts_raw if p.strip()]
+            tokens = axis1.replace("X", "x").split("x")
+            return TermOrTerminationDate(tokens[0]), TermOrTerminationDate(tokens[1])
+        else:
+            return TermOrTerminationDate(axis1), None
 
-            if len(parts) != 2:
-                raise ValueError(f"Invalid axis1: '{axis1}'")
-
-            start_part = parts[0]
-            end_part = parts[1]
-
-            try:
-                datetime.strptime(start_part, "%Y-%m-%d")
-            except ValueError:
-                raise ValueError(f"Invalid effective date: '{start_part}'. Expected format: YYYY-MM-DD")
-
-            try:
-                datetime.strptime(end_part, "%Y-%m-%d")
-                return (start_part, end_part)
-            except ValueError:
-                tenor = end_part.upper()
-                if len(tenor) >= 2 and tenor[:-1].isdigit() and tenor[-1].isalpha():
-                    return (start_part, tenor)
-                else:
-                    raise ValueError(f"Invalid termination: '{end_part}'. Expected YYYY-MM-DD or tenor like '10Y'")
-
-        tenor = axis1.upper()
-        if len(tenor) >= 2 and tenor[:-1].isdigit() and tenor[-1].isalpha():
-            return (None, tenor)
-
-        raise ValueError(f"Invalid axis1 format: '{axis1}'. Expected 'date x date', 'date x tenor', or tenor like '10Y'")
-
-
-    @classmethod
-    def _inferCompoundingMethod(cls, dataConvention: DataConvention) -> str:
-        if hasattr(dataConvention, "compounding"):
-            return dataConvention.compounding.upper()
-
-        if dataConvention.data_type == "RFR FUTURE":
-            return "AVERAGE"
-        elif dataConvention.data_type == "RFR SWAP":
-            return "COMPOUND"
-
-        return "COMPOUND"
-
-
+### support product factory
+ProductBuilderRegistry().register(DataConventionRFRFuture.type(), ProductFactory.create_rfr_future)
+ProductBuilderRegistry().register(DataConventionRFRSwap.type(), ProductFactory.create_rfr_swap)

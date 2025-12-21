@@ -9,7 +9,7 @@ class Currency:
     def __init__(self, input : str) -> None:
 
         self.ccy = None
-
+        self.is_valid_ = True
         if input.upper() == 'USD':
             self.ccy = ql.USDCurrency()
         elif input.upper() == 'CAD':
@@ -22,72 +22,98 @@ class Currency:
             self.ccy = ql.JPYCurrency()
         elif input.upper() == 'AUD':
             self.ccy = ql.AUDCurrency()
+        elif input.upper() == 'INVALID':
+            self.ccy = None
+            self.is_valid_ = False
         else:
             raise Exception(input + ' is not current supported currency.')
 
     @property
     def value(self):
         return self.ccy
+    
+    @property
+    def value_str(self):
+        return self.ccy.code()
+
+    @property
+    def is_valid(self):
+        return self.is_valid_
 
 class BusinessDayConvention:
     
     def __init__(self, input : Optional[str]='NONE') -> None:
+        self.value_str_ = input
         self.value_ = None
-        if input.upper() == 'MF':
+        if self.value_str_.upper() == 'MF':
             self.value_ = ql.ModifiedFollowing
-        elif input.upper() == 'F':
+        elif self.value_str_.upper() == 'F':
             self.value_ = ql.Following
-        elif input.upper() == 'P' or input.upper() == 'NONE':
+        elif self.value_str_.upper() == 'P' or self.value_str_.upper() == 'NONE':
             self.value_ = ql.Preceding
         else:
-            raise Exception(input + ' is not current supported business day convention.')
+            raise Exception(self.value_str_ + ' is not current supported business day convention.')
 
     @property
     def value(self):
         return self.value_
+    
+    @property
+    def value_str(self):
+        return self.value_str_
     
 class HolidayConvention:
     
     def __init__(self, input : Optional[str]='NONE') -> None:
+        self.value_str_ = input
         self.value_ = ql.NullCalendar()
-        if input.upper() == 'NYC':
+        if self.value_str_.upper() == 'NYC':
             self.value_ = ql.UnitedStates(ql.UnitedStates.LiborImpact)
-        elif input.upper() == 'USGS':
+        elif self.value_str_.upper() == 'USGS':
             self.value_ = ql.UnitedStates(ql.UnitedStates.FederalReserve) # not sure
-        elif input.upper() == 'LON':
+        elif self.value_str_.upper() == 'LON':
             self.value_ = ql.UnitedKingdom(ql.UnitedKingdom.Exchange)
-        elif input.upper() == 'TOK':
+        elif self.value_str_.upper() == 'TOK':
             self.value_ = ql.Japan()
-        elif input.upper() == 'TARGET':
+        elif self.value_str_.upper() == 'TARGET':
             self.value_ = ql.JointCalendar(ql.TARGET(), ql.France(), ql.Germany(), ql.Italy()) # good enough ?
-        elif input.upper() == 'SYD':
+        elif self.value_str_.upper() == 'SYD':
             self.value_ = ql.Australia() 
         if self.value_ == None:
-            raise Exception(input + ' is not current supported Hoiday Center.')
+            raise Exception(self.value_str_ + ' is not current supported Hoiday Center.')
 
     @property
     def value(self):
         return self.value_
     
+    @property
+    def value_str(self):
+        return self.value_str_
+
 class AccrualBasis(ql.DayCounter):
 
     def __init__(self, input : Optional[str]='NONE') -> None:
         self.value_ = None
-        if input.upper() == 'NONE':
+        self.value_str_ = input
+        if self.value_str_.upper() == 'NONE':
             self.value_ = ql.SimpleDayCounter()
-        elif input.upper() == 'ACT/ACT':
+        elif self.value_str_.upper() == 'ACT/ACT':
             self.value_ = ql.ActualActual(ql.ActualActual.ISDA)
-        elif input.upper() == 'ACT/365 FIXED':
+        elif self.value_str_.upper() == 'ACT/365 FIXED':
             self.value_ = ql.Actual365Fixed()
-        elif input.upper() == 'ACT/360':
+        elif self.value_str_.upper() == 'ACT/360':
             self.value_ = ql.Actual360()
-        elif input.upper() == '30/360':
+        elif self.value_str_.upper() == '30/360':
             self.value_ = ql.Thirty360(ql.Thirty360.ISDA)
-        elif input.upper() == 'BUSINESS252':
+        elif self.value_str_.upper() == 'BUSINESS252':
             self.value_ = ql.Business252()
         else:
-            raise Exception(input + ' is not current supported accrual basis.')
+            raise Exception(self.value_str_ + ' is not current supported accrual basis.')
 
     @property
     def value(self):
         return self.value_
+    
+    @property
+    def value_str(self):
+        return self.value_str_

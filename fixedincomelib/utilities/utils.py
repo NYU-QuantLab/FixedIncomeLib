@@ -23,6 +23,7 @@ class Registry(ABC):
             # init
             obj = super().__new__(cls)
             obj._map = dict()
+            obj._reverse_map = dict()
             # read files
             path = os.path.join(os.path.pardir, 'static_files')
             file = os.path.join(path, f'{file_name}.{file_type}')

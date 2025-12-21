@@ -1,11 +1,8 @@
 from typing import Sequence, Union, List, Any
-from aem import con
-from matplotlib import axis
 import pandas as pd
-from requests import head
+from fixedincomelib.market import (DataConvention, DataConventionRegistry)
 from fixedincomelib.data.basics import DataObject, DataObjectDeserializerRegistry
-from fixedincomelib.market.data_conventions import DataConvention
-from fixedincomelib.market.registries import DataConventionRegistry
+
 
 class DataTable(DataObject):
 

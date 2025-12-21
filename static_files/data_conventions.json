@@ -1,11 +1,11 @@
 {
-    "USD-SOFR-OIS": 
+    "USD-SOFR-OIS":
     {
       "type": "RFR SWAP",
       "index": "SOFR-1B",
       "accrual_basis": "ACT/360",
       "accrual_period": "1Y",
-      "payment_offset": "2B",
+      "payment_offset": "2D",
       "payment_business_day_convention": "F",
       "payment_holiday_convention": "USGS",
       "compounding_method": "COMPOUND"
@@ -16,16 +16,18 @@
       "index": "SOFR-1B",
       "accrual_basis": "ACT/360",
       "accrual_period": "3M",
-      "payment_offset": "2B",
+      "payment_offset": "2D",
       "payment_business_day_convention": "F",
       "payment_holiday_convention": "USGS",
-      "contractual_notional" : 1000000
+      "compounding_method" : "COMPOUND",
+      "contractual_notional" : 1000000,
+      "basis_point" : 0.25
     },
     "USD-SOFR-SWAPTION":
     {
       "type" : "RFR SWAPTION",
       "index" : "SOFR-1B",
-      "payment_offset": "2B",
+      "payment_offset": "2D",
       "payment_business_day_convention": "F",
       "payment_holiday_convention": "USGS"
     },
@@ -33,7 +35,7 @@
     {
       "type" : "RFR CAPFLOOR",
       "index" : "SOFR-1B",
-      "payment_offset": "2B",
+      "payment_offset": "2D",
       "payment_business_day_convention": "F",
       "payment_holiday_convention": "USGS"
     },

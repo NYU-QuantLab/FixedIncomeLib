@@ -1,4 +1,10 @@
 from fixedincomelib.date.basics import (Date, Period, TermOrTerminationDate)
 from fixedincomelib.date.utilities import (
-    addPeriod, accrued, moveToBusinessDay, isBusinessDay, isHoliday, applyOffset,
-    isWeekend, isEndOfMonth, endOfMonth, makeSchedule, business_day_schedule)
+    add_period, 
+    accrued, 
+    move_to_business_day,
+    is_business_day, 
+    is_holiday, 
+    is_end_of_month, 
+    end_of_month, 
+    make_schedule)

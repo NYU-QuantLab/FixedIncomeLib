@@ -1,11 +1,32 @@
 from abc import ABC
+from enum import Enum
 import pandas as pd
 from fixedincomelib.date import *
 from fixedincomelib.market.registries import *
 from fixedincomelib.market.basics import AccrualBasis, BusinessDayConvention, HolidayConvention
 
+class CompoundingMethod(Enum):
+    
+    SIMPLE = 'simple'
+    ARITHMETIC = 'arithmetic'
+    COMPOUND = 'compound'
+
+    @classmethod
+    def from_string(cls, value: str) -> 'CompoundingMethod':
+        if not isinstance(value, str):
+            raise TypeError("value must be a string")
+        try:
+            return cls(value.lower())
+        except ValueError:
+            raise ValueError(f"Invalid token: {value}")
+
+    def to_string(self) -> str:
+        return self.value
+
 ### interface
 class DataConvention(ABC):
+
+    _type = ''
 
     def __init__(self, unique_name : str, type : str, content : dict):
         super().__init__()
@@ -18,25 +39,28 @@ class DataConvention(ABC):
     def name(self):
         return self.conv_name
     
-    @property
-    def type(self):
-        return self.conv_type
+    @classmethod
+    def type(cls):
+        return cls._type
     
     def display(self):
         to_print = []
         for k, v in self.content.items():
-            to_print.append([k, v])
+            k_ = k
+            if k_.endswith('_'):
+                k_ = k[:-1]
+            to_print.append([k_.upper(), v])
         return pd.DataFrame(to_print, columns=['Name', 'Value'])
 
 ### specific examples
 class DataConventionRFRFuture(DataConvention):
 
-    type = 'RFR FUTURE'
+    _type = 'RFR FUTURE'
 
     def __init__(self, unique_name, content):
     
-        if len(content) != 7:
-            raise ValueError(f"{unique_name}: content should have 7 fields, got {len(content)}")
+        if len(content) != 9:
+            raise ValueError(f"{unique_name}: content should have 9 fields, got {len(content)}")
 
         self.index_ = None
         self.accrual_basis_ = None
@@ -44,7 +68,9 @@ class DataConventionRFRFuture(DataConvention):
         self.payment_offset_ = None
         self.payment_business_day_conv_ = None
         self.payment_holiday_conv_ = None
+        self.compounding_method_ = None
         self.contractual_notional_ = None
+        self.basis_point_ = None
         
         upper_content = {k.upper(): v for k,v in content.items()}
         for k, v in upper_content.items():
@@ -62,40 +88,56 @@ class DataConventionRFRFuture(DataConvention):
                 self.payment_holiday_convention_ = v
             elif k == 'CONTRACTUAL_NOTIONAL':
                 self.contractual_notional_ = float(v)
+            elif k == 'BASIS_POINT':
+                self.basis_point_ = float(v)
+            elif k == 'COMPOUNDING_METHOD':
+                self.compounding_method_ = v
 
-        super().__init__(unique_name, DataConventionRFRFuture.type, self.__dict__.copy())
+        super().__init__(unique_name, DataConventionRFRFuture._type, self.__dict__.copy())
 
     @property
-    def index(self):
+    def index(self) -> ql.QuantLib.OvernightIndex:
         return IndexRegistry().get(self.index_)
     
     @property
-    def acc_basis(self):
+    def index_str(self) -> str:
+        return self.index_
+
+    @property
+    def acc_basis(self) -> AccrualBasis:
         return AccrualBasis(self.accrual_basis_)
     
     @property
-    def acc_period(self):
+    def acc_period(self) -> Period:
         return Period(self.accrual_period_)
     
     @property
-    def payment_offset(self):
+    def payment_offset(self) -> Period:
         return Period(self.payment_offset_)
     
     @property
-    def business_day_convention(self):
+    def business_day_convention(self) -> BusinessDayConvention:
         return BusinessDayConvention(self.payment_business_day_convention_)
     
     @property
-    def holiday_convention(self):
+    def holiday_convention(self) -> HolidayConvention:
         return HolidayConvention(self.payment_holiday_convention_)
     
     @property
-    def contractual_notional(self):
+    def contractual_notional(self) -> float:
         return self.contractual_notional_
+    
+    @property
+    def basis_point(self) -> float:
+        return self.basis_point_
+
+    @property
+    def compounding_method(self) -> CompoundingMethod:
+        return self.compounding_method_
 
 class DataConventionRFRSwap(DataConvention):
 
-    type = 'RFR SWAP'
+    _type = 'RFR SWAP'
 
     def __init__(self, unique_name, content):
 
@@ -120,46 +162,50 @@ class DataConventionRFRSwap(DataConvention):
                 self.accrual_period_ = v
             elif k == "PAYMENT_OFFSET":
                 self.payment_offset_ = v
-            elif k == "PAYMENT_BUSEINSS_DAY_CONVENTION":
+            elif k == "PAYMENT_BUSINESS_DAY_CONVENTION":
                 self.payment_business_day_convention_ = v
             elif k == "PAYMENT_HOLIDAY_CONVENTION":
                 self.payment_holiday_convention_ = v
             elif k == "COMPOUNDING_METHOD":
                 self.compounding_method_ = v
                 
-        super().__init__(unique_name, DataConventionRFRSwap.type, self.__dict__.copy())
+        super().__init__(unique_name, DataConventionRFRSwap._type, self.__dict__.copy())
 
     @property
-    def index(self):
+    def index(self) -> ql.QuantLib.OvernightIndex:
         return IndexRegistry().get(self.index_)
     
     @property
-    def acc_basis(self):
+    def index_str(self) -> str:
+        return self.index_
+
+    @property
+    def acc_basis(self) -> AccrualBasis:
         return AccrualBasis(self.accrual_basis_)
     
     @property
-    def acc_period(self):
+    def acc_period(self) -> Period:
         return Period(self.accrual_period_)
     
     @property
-    def payment_offset(self):
+    def payment_offset(self) -> Period:
         return Period(self.payment_offset_)
     
     @property
-    def business_day_convention(self):
+    def business_day_convention(self) -> BusinessDayConvention:
         return BusinessDayConvention(self.payment_business_day_convention_)
     
     @property
-    def holiday_convention(self):
+    def holiday_convention(self) -> HolidayConvention:
         return HolidayConvention(self.payment_holiday_convention_)
     
     @property
-    def compounding_method(self):
+    def compounding_method(self) -> CompoundingMethod:
         return self.compounding_method_
 
 class DataConventionRFRSwaption(DataConvention):
 
-    type = 'RFR SWAPTION'
+    _type = 'RFR SWAPTION'
 
     def __init__(self, unique_name, content):
 
@@ -182,27 +228,31 @@ class DataConventionRFRSwaption(DataConvention):
             elif k == "PAYMENT_HOLIDAY_CONVENTION":
                 self.payment_holiday_convention_ = v
                 
-        super().__init__(unique_name, DataConventionRFRSwaption.type, self.__dict__.copy())
+        super().__init__(unique_name, DataConventionRFRSwaption._type, self.__dict__.copy())
 
     @property
-    def index(self):
+    def index(self) -> ql.QuantLib.OvernightIndex:
         return IndexRegistry().get(self.index_)
     
     @property
-    def payment_offset(self):
+    def index_str(self) -> str:
+        return self.index_
+
+    @property
+    def payment_offset(self) -> Period:
         return Period(self.payment_offset_)
     
     @property
-    def business_day_convention(self):
+    def business_day_convention(self) -> BusinessDayConvention:
         return BusinessDayConvention(self.payment_business_day_convention_)
     
     @property
-    def holiday_convention(self):
+    def holiday_convention(self) -> HolidayConvention:
         return HolidayConvention(self.payment_holiday_convention_)
 
 class DataConventionRFRCapFloor(DataConvention):
 
-    type = 'RFR CAPFLOOR'
+    _type = 'RFR CAPFLOOR'
 
     def __init__(self, unique_name, content):
 
@@ -225,27 +275,31 @@ class DataConventionRFRCapFloor(DataConvention):
             elif k == "PAYMENT_HOLIDAY_CONVENTION":
                 self.payment_holiday_convention_ = v
                 
-        super().__init__(unique_name, DataConventionRFRSwaption.type, self.__dict__.copy())
+        super().__init__(unique_name, DataConventionRFRSwaption._type, self.__dict__.copy())
 
     @property
-    def index(self):
+    def index(self) -> ql.QuantLib.OvernightIndex:
         return IndexRegistry().get(self.index_)
     
     @property
-    def payment_offset(self):
+    def index_str(self) -> str:
+        return self.index_
+
+    @property
+    def payment_offset(self) -> Period:
         return Period(self.payment_offset_)
     
     @property
-    def business_day_convention(self):
+    def business_day_convention(self) -> BusinessDayConvention:
         return BusinessDayConvention(self.payment_business_day_convention_)
     
     @property
-    def holiday_convention(self):
+    def holiday_convention(self) -> HolidayConvention:
         return HolidayConvention(self.payment_holiday_convention_)
 
 class DataConventionRFRJump(DataConvention):
 
-    type = 'JUMP'
+    _type = 'JUMP'
 
     def __init__(self, unique_name, content):
 
@@ -262,10 +316,10 @@ class DataConventionRFRJump(DataConvention):
             elif k == "JUMP_SIZE":
                 self.jupm_size_ = v
                 
-        super().__init__(unique_name, DataConventionRFRJump.type, self.__dict__.copy())
+        super().__init__(unique_name, DataConventionRFRJump._type, self.__dict__.copy())
 
     @property
-    def index(self):
+    def index(self) -> ql.QuantLib.OvernightIndex:
         return IndexRegistry().get(self.index_)
     
     @property
@@ -273,8 +327,8 @@ class DataConventionRFRJump(DataConvention):
         return self.jupm_size_
 
 ### registry
-DataConventionRegFunction().register(DataConventionRFRFuture.type, DataConventionRFRFuture)
-DataConventionRegFunction().register(DataConventionRFRSwap.type, DataConventionRFRSwap)
-DataConventionRegFunction().register(DataConventionRFRSwaption.type, DataConventionRFRSwaption)
-DataConventionRegFunction().register(DataConventionRFRCapFloor.type, DataConventionRFRCapFloor)
-DataConventionRegFunction().register(DataConventionRFRJump.type, DataConventionRFRJump)
+DataConventionRegFunction().register(DataConventionRFRFuture._type, DataConventionRFRFuture)
+DataConventionRegFunction().register(DataConventionRFRSwap._type, DataConventionRFRSwap)
+DataConventionRegFunction().register(DataConventionRFRSwaption._type, DataConventionRFRSwaption)
+DataConventionRegFunction().register(DataConventionRFRCapFloor._type, DataConventionRFRCapFloor)
+DataConventionRegFunction().register(DataConventionRFRJump._type, DataConventionRFRJump)

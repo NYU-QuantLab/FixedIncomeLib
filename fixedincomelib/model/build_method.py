@@ -7,7 +7,7 @@ from tomlkit import item
 from fixedincomelib.utilities.utils import Registry
 
 
-class BuildMethodDeserializerRregistry(Registry):
+class BuildMethodBuilderRregistry(Registry):
     
     def __new__(cls) -> Self:
         return super().__new__(cls, '', cls.__name__)
@@ -15,7 +15,6 @@ class BuildMethodDeserializerRregistry(Registry):
     def register(self, key : Any, value : Any) -> None:
         super().register(key, value)
         self._map[key] = value
-
 
 class BuildMethod(ABC):
 
@@ -42,10 +41,19 @@ class BuildMethod(ABC):
         for k in valid_keys:
             if k not in self.bm_dict:
                 self.bm_dict[k.upper()] = ''
-                
+    
     @abstractmethod
-    def get_valid_keys(self) -> set:
+    def calibration_instruments(self) -> set:
         pass
+
+    @abstractmethod
+    def additional_entries(self) -> set:
+        pass
+    
+    def get_valid_keys(self) -> set:
+        keys = self.additional_entries()
+        keys.update(self.calibration_instruments())
+        return keys
     
     def __getitem__(self, key : str):
         return self.bm_dict[key.upper()]
@@ -91,10 +99,7 @@ class BuildMethod(ABC):
         return cls(target, this_dict)
 
     @classmethod
-    def generate_content_based_on_version(
-        cls, 
-        version : float, 
-        input_dict : dict):
+    def generate_content_based_on_version(cls, version : float, input_dict : dict):
 
         return {k.upper() : v for k, v in input_dict.items()}
 
@@ -113,6 +118,10 @@ class BuildMethodColleciton:
     @property
     def num_build_methods(self):
         return self.num_bms
+    
+    @property
+    def items(self):
+        return self.bm_col.items()
 
     def get_build_method_from_build_method_collection(
             self, 
@@ -152,7 +161,7 @@ class BuildMethodColleciton:
         input_dict_.pop('TYPE')
         bm_list = []
         for _, v in input_dict_.items():
-            func = BuildMethodDeserializerRregistry().get(v['TYPE'])
+            func = BuildMethodBuilderRregistry().get(v['TYPE'])
             bm = func.deserialize(v)
             bm_list.append(bm)
         return cls(bm_list)

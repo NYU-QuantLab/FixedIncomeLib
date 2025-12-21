@@ -17,6 +17,10 @@ class DataCollection:
     def num_data(self):
         return self.num_data_
 
+    @property
+    def items(self):
+        return self.data_col.items()
+
     def get_data_from_data_collection(self, data_type : str, data_conv : str) -> DataObject:
         key =  (data_type.upper(), data_conv.upper())
         if key not in self.data_col:

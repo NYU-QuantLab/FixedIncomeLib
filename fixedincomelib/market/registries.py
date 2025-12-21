@@ -1,4 +1,4 @@
-import os, csv
+import os, csv, json
 from abc import ABC
 import datetime as dt
 import pandas as pd
@@ -23,6 +23,7 @@ class IndexRegistry(Registry):
         except AttributeError:
             raise KeyError(f"QuantLib has no attribute '{value}' for key '{key}'")
         self._map[key] = ql_object
+        # self._reverse_map[ql_object.name()] = key
 
     def get(self, key: Any, **args) -> Any:
         try: 
@@ -33,6 +34,11 @@ class IndexRegistry(Registry):
                 return func()
         except:
             raise KeyError(f'no entry for key : {key}.')
+
+    # def convert_ql_index(self, ql_index : str):
+    #     if ql_index in self._reverse_map:
+    #         return self._reverse_map[ql_index]
+    #     raise Exception(f'Cannot map {ql_index} from QuantLib Index.')
 
     def display_all_indices(self) -> pd.DataFrame:
         default_term = '3M'

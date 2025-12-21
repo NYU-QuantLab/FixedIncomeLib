@@ -26,8 +26,9 @@ class Period(ql.Period):
     pass
 
 class TermOrTerminationDate:
+    
     ### Instanitate either a term object (Period) or a date object (Date)
-    def __init__(self, input : Union[str, Period, Date]) -> None:
+    def __init__(self, input : Union[str, ql.Period, ql.Date]) -> None:
         self.this_date = None
         self.this_term = None
         if isinstance(input, str):
@@ -36,16 +37,16 @@ class TermOrTerminationDate:
                 self.this_date = Date(input)
             else:
                 self.this_term = Period(input)
-        elif isinstance(input, Period):
+        elif isinstance(input, (ql.Period, Period)):
             self.this_term = input
-        elif isinstance(input, Date):
+        elif isinstance(input, (ql.Date, Date)):
             self.this_date = input
 
-    def isTerm(self) -> bool:
+    def is_term(self) -> bool:
         return self.this_date == None
     
-    def getDate(self) -> Date:
+    def get_date(self) -> Date:
         return self.this_date
     
-    def getTerm(self) -> Period:
+    def get_term(self) -> Period:
         return self.this_term

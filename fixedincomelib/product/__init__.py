@@ -1,15 +1,10 @@
-from fixedincomelib.product.product import (LongOrShort, Product)
-from fixedincomelib.product.portfolio import (ProductPortfolio)
+from fixedincomelib.product.product_interfaces import (Product, ProductBuilderRegistry)
+from fixedincomelib.product.utilities import (LongOrShort, PayOrReceive)
+from fixedincomelib.product.product_portfolio import (ProductPortfolio)
 from fixedincomelib.product.linear_products import (
     ProductBulletCashflow, 
-    ProductFuture, 
-    ProductIborCashflow, 
+    ProductFixedAccrued,
     ProductOvernightIndexCashflow, 
-    ProductRfrFuture, 
-    ProductIborSwap, 
-    ProductRfrSwap,
-    ProductOvernightSwap, 
     InterestRateStream)
 from fixedincomelib.product.product_display_visitor import ProductDisplayVisitor
-from fixedincomelib.product.non_linear_products import (ProductIborCapFloorlet, ProductOvernightCapFloorlet, CapFloorStream, ProductIborCapFloor, ProductOvernightCapFloor, ProductIborSwaption, ProductOvernightSwaption)
 from fixedincomelib.product.product_factory import ProductFactory

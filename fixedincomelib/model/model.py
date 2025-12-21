@@ -1,109 +1,90 @@
-# import pandas as pd
-# import datetime as dt
-# from typing import Any, Optional
-# from abc import ABCMeta, abstractmethod
-# from date import Date
+from token import OP
+import pandas as pd
+import datetime as dt
+from typing import Any, Optional, Dict
+from abc import ABCMeta, abstractmethod
+from fixedincomelib.date import *
+from fixedincomelib.data import *
+from fixedincomelib.model.build_method import *
 
-# ### allowed model type
-# class ModelType:
+### restrict admissible model sets
+class ModelType:
 
-#     YIELD_CURVE = 1
-#     IR_SABR = 2
-#     INVALID = 3
+    # ordered by hierachy
+    YIELD_CURVE = 1
+    IR_SABR = 2
+    INVALID = 3
 
-#     def __init__(self, model_type : str) -> None:
-#         self.valueStr_ = model_type
-#         self.value_ = ModelType.INVALID
-#         if model_type.upper() == 'YIELD_CURVE':
-#             self.value_ =  ModelType.YIELD_CURVE
-#         elif model_type.upper() == 'IR_SABR':
-#             self.value_ =  ModelType.IR_SABR
-#         else:
-#             raise Exception('Model type ' + model_type + ' is not supported.')
+    def __init__(self, model_type : str) -> None:
+        self.value_str_ = model_type
+        self.value_ = ModelType.INVALID
+        if model_type.upper() == 'YIELD_CURVE':
+            self.value_ =  ModelType.YIELD_CURVE
+        elif model_type.upper() == 'IR_SABR':
+            self.value_ =  ModelType.IR_SABR
+        else:
+            raise Exception('Model type ' + model_type + ' is not supported.')
     
-#     @property
-#     def value(self):
-#         return self.value_
+    @property
+    def value(self):
+        return self.value_
     
-#     @property
-#     def valueStr(self):
-#         return self.valueStr_
+    @property
+    def value_str(self):
+        return self.value_str_
 
-# ### model interface
-# class Model(metaclass=ABCMeta):
+    @property
+    def order(self):
+        return int(self.value)
 
-#     def __init__(self, 
-#                 valueDate : str, 
-#                 modelType : str, 
-#                 dataCollection : pd.DataFrame, 
-#                 buildMethodCollection : list) -> None:
+### one model consist of multiple components
+class ModelComponent(metaclass=ABCMeta):
 
-#         self.valueDate_ = Date(valueDate)
-#         self.modelType_ = ModelType(modelType)
-#         self.dataCollection_ = dataCollection
-#         self.buildMethodCollection_ = buildMethodCollection
-#         self.subModel_ = None
-#         # initialize model component
-#         self.components = dict()
-#         for this_bm in self.buildMethodCollection:
-#             assert isinstance(this_bm, dict)
-#             assert 'TARGET' in list(this_bm.keys())
-#             self.components[this_bm['TARGET']] = self.newModelComponent(this_bm)
+    def __init__(self, value_date : Date, calibration_data : DataCollection, build_method : BuildMethod) -> None:
+        self.valueDate_ = value_date
+        self.calibration_data_ = calibration_data
+        self.build_method_ = build_method
+        self.target_ = build_method.target
+        self.state_vars_ = []
 
-#     @abstractmethod
-#     def newModelComponent(self, buildMethod : dict):
-#         pass
-
-#     @property    
-#     def valueDate(self):
-#         return self.valueDate_
+    @property
+    def target(self):
+        return self.target_
     
-#     @property
-#     def modelType(self):
-#         return self.modelType_.valueStr
-
-#     @property
-#     def buildMethodCollection(self):
-#         return self.buildMethodCollection_
+    @property
+    def calibraion_data(self):
+        return self.calibration_data_
     
-#     @property
-#     def dataCollection(self):
-#         return self.dataCollection_
+    @property
+    def build_method(self):
+        return self.build_method_
+
+### model interface
+class Model(metaclass=ABCMeta):
+
+    def __init__(self, value_date : Date, model_type : ModelType, sub_model : Optional[Any]=None) -> None:
+        self.value_date_ = value_date
+        self.model_type_ = model_type
+        self.components : Dict[str, ModelComponent] = {}
+        self.sub_model_ = None        
+        
+    @property    
+    def value_date(self):
+        return self.value_date_
     
-#     @property
-#     def subModel(self):
-#         return self.subModel_
+    @property
+    def model_type(self):
+        return self.model_type_
+    
+    @property
+    def sub_model(self):
+        return self.sub_model_
 
-#     def retrieveComponent(self, target : str):
-#         if target.upper() in self.components:
-#             return self.components[target.upper()]
-#         return None
+    def set_model_component(self, target : str, model_component : ModelComponent):
+        self.components[target] = model_component
 
-# ### one model can have multiple components
-# class ModelComponent(metaclass=ABCMeta):
-
-#     def __init__(self, 
-#                 valueDate : Date, 
-#                 dataCollection : pd.DataFrame, 
-#                 buildMethod : dict) -> None:
-
-#         self.valueDate_ = valueDate
-#         self.dataCollection_ = dataCollection
-#         self.buildMethod_ = buildMethod
-#         self.target_ = buildMethod['TARGET']
-#         self.state_vars_ = []
-
-#     @abstractmethod
-#     def calibrate(self):
-#         pass
-
-#     @property
-#     def target(self):
-#         return self.target_
-
-
-
-# ### Model consists of multt-component
-# ###
-# ###  Model => Model COmponent
-# ###
+    def retrieve_model_component(self, target : str):
+        if target.upper() in self.components:
+            return self.components[target.upper()]
+        else:
+            raise Exception(f'This model does not contain {target.upper()} component.')

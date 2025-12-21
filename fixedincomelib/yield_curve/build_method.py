@@ -1,6 +1,6 @@
 from typing import Union, List
 from fixedincomelib.market.registries import DataConventionRegistry, IndexRegistry
-from fixedincomelib.model import (BuildMethod, BuildMethodDeserializerRregistry)
+from fixedincomelib.model import (BuildMethod, BuildMethodBuilderRregistry)
 
 
 class YieldCurveBuildMethod(BuildMethod):
@@ -9,7 +9,7 @@ class YieldCurveBuildMethod(BuildMethod):
     _build_method_type = 'YIELD_CURVE'
 
     def __init__(self, 
-                 target : str, 
+                 target : str,
                  content : Union[List, dict]):
 
         super().__init__(target, 'YIELD_CURVE', content)
@@ -18,21 +18,26 @@ class YieldCurveBuildMethod(BuildMethod):
         if self.bm_dict['EXTRAPOLATION METHOD'] == '':
             self.bm_dict['EXTRAPOLATION METHOD'] = 'FLAT'
 
-    
-    def get_valid_keys(self) -> set:
+    def calibration_instruments(self) -> set:
         return {
-            'REFERENCE INDEX',
             'FIXING',
             'LIBOR FUTURE',
             'OVERNIGHT INDEX FUTURE',
             'SWAP',
-            'OVERNIGHT INDEX SWAP',
-            'INTERPOLATION METHOD',
-            'EXTRAPOLATION METHOD'}
+            'OVERNIGHT INDEX SWAP'}
+
+    def additional_entriess(self) -> set:
+        return {'REFERENCE INDEX', 'INTERPOLATION METHOD', 'EXTRAPOLATION METHOD'}
 
     @property
     def target_index(self):
         return IndexRegistry().get(self.target)
+
+    @property
+    def reference_index(self):
+        if 'REFERENCE INDEX' not in self.bm_dict:
+            return None
+        return IndexRegistry().get(self.bm_dict['REFERENCE INDEX'])
 
     @property
     def fixing(self):
@@ -74,5 +79,5 @@ class YieldCurveBuildMethod(BuildMethod):
 
 
 ### register
-BuildMethodDeserializerRregistry().register(YieldCurveBuildMethod._build_method_type, YieldCurveBuildMethod)
-BuildMethodDeserializerRregistry().register(YieldCurveBuildMethod._build_method_type + '_DES', YieldCurveBuildMethod.deserialize)
+BuildMethodBuilderRregistry().register(YieldCurveBuildMethod._build_method_type, YieldCurveBuildMethod)
+BuildMethodBuilderRregistry().register(f'{YieldCurveBuildMethod._build_method_type}_DES', YieldCurveBuildMethod.deserialize)

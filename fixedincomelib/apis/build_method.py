@@ -1,16 +1,13 @@
 import pickle
-from arrow import get
-from construct import this
 import pandas as pd
 from typing import List
 from fixedincomelib.model import BuildMethod
 from fixedincomelib.yield_curve import YieldCurveBuildMethod
-from fixedincomelib.model import BuildMethodColleciton, BuildMethodDeserializerRregistry
-
+from fixedincomelib.model import (BuildMethodColleciton, BuildMethodBuilderRregistry)
 
 def qfCreateBuildMethod(build_method_type : str, content : dict):
     assert 'TARGET' in content
-    func = BuildMethodDeserializerRregistry().get(build_method_type)
+    func = BuildMethodBuilderRregistry().get(build_method_type)
     return func(content['TARGET'], content)
 
 def qfWriteBuildMethodToFile(build_method : BuildMethod, path : str):
@@ -22,8 +19,8 @@ def qfWriteBuildMethodToFile(build_method : BuildMethod, path : str):
 def qfReadBuildMethodFromFile(path : str):
     with open(path, 'rb') as handle:
         this_dict = pickle.load(handle)
-        this_key = YieldCurveBuildMethod._build_method_type + '_DES'
-        func = BuildMethodDeserializerRregistry().get(this_key)
+        this_key = f'{YieldCurveBuildMethod._build_method_type}_DES'
+        func = BuildMethodBuilderRregistry().get(this_key)
         return func(this_dict)
          
 def qfCreateModelBuildMethodCollection(bm_list : List[BuildMethod]):
