@@ -23,7 +23,6 @@ class IndexRegistry(Registry):
         except AttributeError:
             raise KeyError(f"QuantLib has no attribute '{value}' for key '{key}'")
         self._map[key] = ql_object
-        # self._reverse_map[ql_object.name()] = key
 
     def get(self, key: Any, **args) -> Any:
         try: 
@@ -34,11 +33,6 @@ class IndexRegistry(Registry):
                 return func()
         except:
             raise KeyError(f'no entry for key : {key}.')
-
-    # def convert_ql_index(self, ql_index : str):
-    #     if ql_index in self._reverse_map:
-    #         return self._reverse_map[ql_index]
-    #     raise Exception(f'Cannot map {ql_index} from QuantLib Index.')
 
     def display_all_indices(self) -> pd.DataFrame:
         default_term = '3M'
@@ -96,7 +90,6 @@ class IndexFixingsManager(Registry):
             this_map : dict = self.get(index)
             this_map.pop(Date(date))
 
-
 class DataConventionRegFunction(Registry):
 
     def __new__(cls) -> Self:
@@ -124,6 +117,16 @@ class DataConventionRegistry(Registry):
         for k, v in self._map.items():
             to_print.append([k, v.name])
         return pd.DataFrame(to_print, columns=['Name', 'Type'])
+
+class DataIdentifierRegistry(Registry):
+
+    def __new__(cls) -> Self:
+        return super().__new__(cls, '', cls.__name__)
+
+    def register(self, key : Any, value : Any) -> None:
+        super().register(key, value)
+        self._map[key] = value
+
 
 ############################################################################################
 

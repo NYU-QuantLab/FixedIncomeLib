@@ -7,7 +7,8 @@ from fixedincomelib.market.basics import (
 from fixedincomelib.market.registries import (
     DataConventionRegistry, 
     IndexRegistry, 
-    IndexFixingsManager)
+    IndexFixingsManager, 
+    DataIdentifierRegistry)
 from fixedincomelib.market.data_conventions import (
     CompoundingMethod,
     DataConvention,
@@ -17,3 +18,4 @@ from fixedincomelib.market.data_conventions import (
     DataConventionRFRSwap, 
     DataConventionRFRSwaption
 )
+from fixedincomelib.market.data_identifiers import *

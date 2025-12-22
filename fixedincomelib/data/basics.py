@@ -1,8 +1,8 @@
 import pandas as pd
 from typing import Tuple, Any, Self
-from abc import ABC, abstractclassmethod, abstractmethod
+from abc import ABC, abstractclassmethod, abstractmethod 
 from fixedincomelib.utilities import Registry
-from fixedincomelib.market import DataConvention
+from fixedincomelib.market import (DataConvention, DataIdentifier, DataIdentifierRegistry)
 
 
 class DataObjectDeserializerRegistry(Registry):
@@ -23,14 +23,15 @@ class DataObject(ABC):
     def __init__(self, data_type: str, data_convention: DataConvention):
         self.data_type_ = data_type
         self.data_convention_ = data_convention
-        self.data_identifier_ = (data_type.upper(), data_convention.name.upper())
+        func = DataIdentifierRegistry().get(self.data_type_)
+        self.data_identifier_ = func(self.data_convention_)
 
     @property
-    def data_shape(self):
+    def data_shape(self) -> str:
         return self._data_shape
          
     @property
-    def data_identifier(self) -> Tuple[str, str]:
+    def data_identifier(self) -> DataIdentifier:
         return self.data_identifier_
     
     @property

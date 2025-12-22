@@ -1,15 +1,17 @@
 import pandas as pd
 from typing import Dict, Tuple, List
 from fixedincomelib.data.basics import DataObject, DataObjectDeserializerRegistry
+from fixedincomelib.market.data_identifiers import DataIdentifier
+from fixedincomelib.market.registries import (DataConventionRegistry, DataIdentifierRegistry)
 
 class DataCollection:
 
     _version = 1
 
     def __init__(self, data_list : List[DataObject]) -> None:
-        self.data_col : dict[Tuple, DataObject] = {}
+        self.data_col : dict[str, DataObject] = {}
         for each in data_list:
-            self.data_col[each.data_identifier] = each
+            self.data_col[each.data_identifier.to_string()] = each
         self.num_data_ = len(self.data_col)
         assert self.num_data_ != 0
 
@@ -22,7 +24,10 @@ class DataCollection:
         return self.data_col.items()
 
     def get_data_from_data_collection(self, data_type : str, data_conv : str) -> DataObject:
-        key =  (data_type.upper(), data_conv.upper())
+        data_conv_obj = DataConventionRegistry().get(data_conv)
+        func = DataIdentifierRegistry().get(data_type)
+        di : DataIdentifier = func(data_conv_obj)
+        key =  di.to_string()
         if key not in self.data_col:
             raise Exception(f'Cannot find unique id with data type {data_type}, data convention {data_conv}.')
         return self.data_col[key]

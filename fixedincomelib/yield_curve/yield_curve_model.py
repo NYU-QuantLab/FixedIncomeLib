@@ -1,3 +1,4 @@
+from ast import Index
 from fixedincomelib.date import *
 from fixedincomelib.data import *
 from fixedincomelib.market import *
@@ -93,3 +94,18 @@ from fixedincomelib.yield_curve.build_method import YieldCurveBuildMethod
 #     @property
 #     def targetIndex(self):
 #         return self.targetIndex_
+
+
+class YieldCurveModelComponent(ModelComponent):
+
+    def __init__(self, 
+                 value_date : Date, 
+                 component_identifier : ql.Index,
+                 calibration_data : DataCollection, 
+                 build_method : BuildMethod) -> None:
+        
+        self.valueDate_ = value_date
+        self.calibration_data_ = calibration_data
+        self.build_method_ = build_method
+        self.target_ = build_method.target
+        self.state_vars_ = []
