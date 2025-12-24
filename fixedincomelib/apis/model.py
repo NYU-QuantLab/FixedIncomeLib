@@ -1,0 +1,80 @@
+from fixedincomelib.date import *
+from fixedincomelib.data import *
+from fixedincomelib.model import *
+from fixedincomelib.yield_curve import *
+from fixedincomelib.yield_curve.model_builder import YieldCurveBuilder
+
+def qfDisplayModelValueDate(model : Model):
+    return model.value_date.ISO()
+
+def qfDisplayModelType(model : Model):
+    return model.model_type
+
+def qfGetDataCollectionFromModel(model : Model):
+    return model.data_collection
+
+def qfGetBuildMethodCollection(model : Model):
+    return model.build_method_collection
+
+def qfCreateModel(
+    value_date : str,
+    model_type : str,
+    data_collection : DataCollection,
+    build_method_collection : BuildMethodColleciton):
+
+    model_type_enum = ModelType.from_string(model_type)
+    if model_type_enum == ModelType.YIELD_CURVE:
+        return YieldCurveBuilder.create_model_yield_curve(
+            Date(value_date),
+            data_collection,
+            build_method_collection)
+    else:
+        raise Exception('Currently only support model type yield curve.')
+
+def qfDiscountFactor(
+    model : Model,
+    index : str,
+    expiry_date : str):
+
+    yc_model : YieldCurve = model
+    if yc_model.model_type != ModelType.YIELD_CURVE.to_string():
+        yc_model = model.sub_model
+    assert yc_model.model_type == ModelType.YIELD_CURVE.to_string()
+
+    index_obj = None
+    try:
+        index_obj = IndexRegistry().get(index)
+    except:
+        tenor = index.split('-')[-1]
+        prefix = index.replace(f'-{tenor}', '')
+        index_obj = IndexRegistry().get(prefix, term=Period(tenor))
+
+    return yc_model.discount_factor(index_obj, Date(expiry_date))
+
+# dont think this needs to be exposed, just for testing purpose
+def qfDiscountFactorGradient(
+        model : Model,
+        index : str,
+        expiry_date : str, 
+        gradient : List[np.ndarray],
+        scaler : Optional[float]=1.,
+        accmulate : Optional[bool]=False) -> np.ndarray:
+    
+    yc_model : YieldCurve = model
+    if yc_model.model_type != ModelType.YIELD_CURVE.to_string():
+        yc_model = model.sub_model
+    assert yc_model.model_type == ModelType.YIELD_CURVE.to_string()
+
+    index_obj = None
+    try:
+        index_obj = IndexRegistry().get(index)
+    except:
+        tenor = index.split('-')[-1]
+        prefix = index.replace(f'-{tenor}', '')
+        index_obj = IndexRegistry().get(prefix, term=Period(tenor))
+
+    if len(gradient) == 0:
+        yc_model.resize_gradient(gradient)
+
+    yc_model.discount_factor_gradient_wrt_state(
+        index_obj, Date(expiry_date), gradient, scaler, accmulate)

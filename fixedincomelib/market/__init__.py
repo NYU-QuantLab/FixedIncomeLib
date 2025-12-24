@@ -14,7 +14,8 @@ from fixedincomelib.market.data_conventions import (
     DataConvention,
     DataConventionRegistry, 
     DataConventionRFRFuture, 
-    DataConventionRFRJump, 
+    DataConventionJump, 
+    DataConventionIFR,
     DataConventionRFRSwap, 
     DataConventionRFRSwaption
 )

@@ -44,5 +44,19 @@
       "type" : "JUMP",
       "index" : "SOFR-1B",
       "jump_size" : 10000
+    },
+    "USD-SOFR-IFR":
+    {
+      "type" : "INSTANTANEOUS FORWARD RATE",
+      "index" : "SOFR-1B",
+      "business_day_convention": "F",
+      "holiday_convention": "USGS"
+    },
+    "USD-FF-IFR":
+    {
+      "type" : "INSTANTANEOUS FORWARD RATE",
+      "index" : "FF-1B",
+      "business_day_convention": "F",
+      "holiday_convention": "USGS"
     }
 }

@@ -1,90 +1,155 @@
-from token import OP
+import numpy as np
 import pandas as pd
 import datetime as dt
+import QuantLib as ql
+from enum import Enum
 from typing import Any, Optional, Dict
 from abc import ABCMeta, abstractmethod
 from fixedincomelib.date import *
 from fixedincomelib.data import *
+from fixedincomelib.product import *
 from fixedincomelib.model.build_method import *
 
 ### restrict admissible model sets
-class ModelType:
-
-    # ordered by hierachy
-    YIELD_CURVE = 1
-    IR_SABR = 2
-    INVALID = 3
-
-    def __init__(self, model_type : str) -> None:
-        self.value_str_ = model_type
-        self.value_ = ModelType.INVALID
-        if model_type.upper() == 'YIELD_CURVE':
-            self.value_ =  ModelType.YIELD_CURVE
-        elif model_type.upper() == 'IR_SABR':
-            self.value_ =  ModelType.IR_SABR
-        else:
-            raise Exception('Model type ' + model_type + ' is not supported.')
+class ModelType(Enum):
     
-    @property
-    def value(self):
-        return self.value_
-    
-    @property
-    def value_str(self):
-        return self.value_str_
+    YIELD_CURVE = 'YIELD_CURVE'
+    IR_SABR = 'IR_SABR'
 
-    @property
-    def order(self):
-        return int(self.value)
+    @classmethod
+    def from_string(cls, value: str) -> 'ModelType':
+        if not isinstance(value, str):
+            raise TypeError("value must be a string")
+        try:
+            return cls(value.upper())
+        except ValueError:
+            raise ValueError(f"Invalid token: {value}")
+
+    def to_string(self) -> str:
+        return self.value
+
 
 ### one model consist of multiple components
-class ModelComponent(metaclass=ABCMeta):
+class ModelComponent:
 
-    def __init__(self, value_date : Date, calibration_data : DataCollection, build_method : BuildMethod) -> None:
-        self.valueDate_ = value_date
-        self.calibration_data_ = calibration_data
+    def __init__(self, 
+                 value_date : Date,
+                 component_identifier : ql.Index,
+                 calibration_product : list[Product],
+                 state_data : Any,
+                 build_method : BuildMethod) -> None:
+        
+        self.value_date_ = value_date
+        self.component_identifier_ = component_identifier
+        self.calibration_product_ = calibration_product
         self.build_method_ = build_method
-        self.target_ = build_method.target
-        self.state_vars_ = []
+        self.state_data_ = state_data
+        self.num_state_data_ = -1
 
     @property
-    def target(self):
-        return self.target_
+    def value_date(self) -> Date:
+        return self.value_date_
+
+    @property
+    def component_identifier(self) -> ql.IborIndex | ql.OvernightIndex:
+        return self.component_identifier_
+
+    @property
+    def calibration_product(self) -> list[DataObject]:
+        return self.calibration_product_
     
     @property
-    def calibraion_data(self):
-        return self.calibration_data_
-    
-    @property
-    def build_method(self):
+    def build_method(self) -> BuildMethod:
         return self.build_method_
+    
+    @property
+    def state_data(self) -> Any:
+        return self.state_data_
+    
+    @property
+    def num_state_data(self) -> int:
+        return self.num_state_data_
+
 
 ### model interface
 class Model(metaclass=ABCMeta):
 
-    def __init__(self, value_date : Date, model_type : ModelType, sub_model : Optional[Any]=None) -> None:
+    def __init__(self, 
+                 value_date : Date, 
+                 model_type : ModelType,
+                 data_collection : DataCollection,
+                 build_method_collection : BuildMethodColleciton) -> None:
+        
         self.value_date_ = value_date
         self.model_type_ = model_type
-        self.components : Dict[str, ModelComponent] = {}
+        self.data_collection_ = data_collection
+        self.build_method_collection_ = build_method_collection
+        self.components_ : Dict[str, ModelComponent] = {}
+        self.component_indices_ : Dict[str, int] = {}
         self.sub_model_ = None        
-        
+        # risk
+        self.num_components_ = 0
+        self.num_sub_components_ = [] # for each component, how mnay state variables
+        self.model_jacobian_ : np.ndarray = np.asarray([])
+
     @property    
     def value_date(self):
         return self.value_date_
     
     @property
-    def model_type(self):
-        return self.model_type_
+    def model_type(self) -> str:
+        return self.model_type_.to_string()
     
     @property
-    def sub_model(self):
+    def data_collection(self) -> DataCollection:
+        return self.data_collection_
+    
+    @property
+    def build_method_collection(self) -> BuildMethodColleciton:
+        return self.build_method_collection_
+
+    @property
+    def num_components(self) -> int:
+        return self.num_components_
+    
+    @property
+    def component_indices(self) -> Dict:
+        return self.component_indices_
+
+    @property
+    def num_sub_components(self) -> int:
+        return self.num_sub_components_
+
+    @property
+    def model_jacobian(self) -> np.ndarray:
+        return self.model_jacobian_
+
+    @property
+    def sub_model(self) -> 'Model':
         return self.sub_model_
 
-    def set_model_component(self, target : str, model_component : ModelComponent):
-        self.components[target] = model_component
+    def resize_gradient(self, gradient: List[np.ndarray]):
+        if len(gradient) != self.num_components:
+            gradient[:] = [np.array([]) for _ in range(self.num_components)]
 
-    def retrieve_model_component(self, target : str):
-        if target.upper() in self.components:
-            return self.components[target.upper()]
+        for i in range(self.num_components):
+            if len(gradient[i]) != self.num_sub_components[i]:
+                gradient[i] = np.zeros(self.num_sub_components[i])
+
+
+    def set_sub_model(self, model : 'Model') -> None:
+        self.sub_model_ = model
+
+    def set_model_component(self, target : ql.Index, model_component : ModelComponent) -> None:
+        self.component_indices_[target.name()] = self.num_components_
+        self.components_[target.name()] = model_component
+        self.num_sub_components_.append(model_component.num_state_data)
+        # increment by 1
+        self.num_components_ += 1
+        
+    def retrieve_model_component(self, target : ql.Index) -> ModelComponent:
+        if target.name() in self.components_:
+            return self.components_[target.name()]
         else:
-            raise Exception(f'This model does not contain {target.upper()} component.')
+            raise Exception(f'This model does not contain {target.name()} component.')
+     

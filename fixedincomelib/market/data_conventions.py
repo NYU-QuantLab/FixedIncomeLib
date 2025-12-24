@@ -223,7 +223,7 @@ class DataConventionRFRSwaption(DataConvention):
                 self.index_ = v
             elif k == "PAYMENT_OFFSET":
                 self.payment_offset_ = v
-            elif k == "PAYMENT_BUSEINSS_DAY_CONVENTION":
+            elif k == "PAYMENT_BUSINESS_DAY_CONVENTION":
                 self.payment_business_day_convention_ = v
             elif k == "PAYMENT_HOLIDAY_CONVENTION":
                 self.payment_holiday_convention_ = v
@@ -270,7 +270,7 @@ class DataConventionRFRCapFloor(DataConvention):
                 self.index_ = v
             elif k == "PAYMENT_OFFSET":
                 self.payment_offset_ = v
-            elif k == "PAYMENT_BUSEINSS_DAY_CONVENTION":
+            elif k == "PAYMENT_BUSINESS_DAY_CONVENTION":
                 self.payment_business_day_convention_ = v
             elif k == "PAYMENT_HOLIDAY_CONVENTION":
                 self.payment_holiday_convention_ = v
@@ -297,14 +297,14 @@ class DataConventionRFRCapFloor(DataConvention):
     def holiday_convention(self) -> HolidayConvention:
         return HolidayConvention(self.payment_holiday_convention_)
 
-class DataConventionRFRJump(DataConvention):
+class DataConventionJump(DataConvention):
 
     _type = 'JUMP'
 
     def __init__(self, unique_name, content):
 
         if len(content) != 2:
-            raise ValueError(f"{unique_name}: content should have 4 fields, got {len(content)}")
+            raise ValueError(f"{unique_name}: content should have 2 fields, got {len(content)}")
 
         self.index_ = None
         self.jupm_size_ = 1e4
@@ -316,19 +316,60 @@ class DataConventionRFRJump(DataConvention):
             elif k == "JUMP_SIZE":
                 self.jupm_size_ = v
                 
-        super().__init__(unique_name, DataConventionRFRJump._type, self.__dict__.copy())
+        super().__init__(unique_name, DataConventionJump._type, self.__dict__.copy())
 
     @property
-    def index(self) -> ql.QuantLib.OvernightIndex:
+    def index(self) -> ql.Index:
         return IndexRegistry().get(self.index_)
     
     @property
     def jump_size(self):
         return self.jupm_size_
 
+class DataConventionIFR(DataConvention):
+
+    _type = 'INSTANTANEOUS FORWARD RATE'
+
+    def __init__(self, unique_name, content):
+
+        if len(content) != 3:
+            raise ValueError(f"{unique_name}: content should have 3 fields, got {len(content)}")
+
+        self.index_ = None
+        self.jupm_size_ = 1e4
+
+        upper_content = {k.upper(): v for k,v in content.items()}
+        for k, v in upper_content.items():
+            if k.upper() == "INDEX": 
+                self.index_ = v
+            elif k == "BUSINESS_DAY_CONVENTION":
+                self.business_day_convention_ = v
+            elif k == "HOLIDAY_CONVENTION":
+                self.holiday_convention_ = v
+                
+        super().__init__(unique_name, DataConventionIFR._type, self.__dict__.copy())
+
+    @property
+    def index(self) -> ql.QuantLib.OvernightIndex:
+        try:
+            return IndexRegistry().get(self.index_)
+        except: 
+            tenor = self.index_.split('-')[-1]
+            index_red = str(self.index_).replace(f'-{tenor}', '')
+            return IndexRegistry().get(index_red, term=tenor)
+
+    @property
+    def business_day_convention(self) -> BusinessDayConvention:
+        return BusinessDayConvention(self.business_day_convention_)
+    
+    @property
+    def holiday_convention(self) -> HolidayConvention:
+        return HolidayConvention(self.holiday_convention_)
+
 ### registry
 DataConventionRegFunction().register(DataConventionRFRFuture._type, DataConventionRFRFuture)
 DataConventionRegFunction().register(DataConventionRFRSwap._type, DataConventionRFRSwap)
 DataConventionRegFunction().register(DataConventionRFRSwaption._type, DataConventionRFRSwaption)
 DataConventionRegFunction().register(DataConventionRFRCapFloor._type, DataConventionRFRCapFloor)
-DataConventionRegFunction().register(DataConventionRFRJump._type, DataConventionRFRJump)
+DataConventionRegFunction().register(DataConventionJump._type, DataConventionJump)
+DataConventionRegFunction().register(DataConventionIFR._type, DataConventionIFR)

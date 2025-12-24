@@ -1,45 +1,90 @@
-from abc import ABCMeta, abstractmethod
-from typing import Dict
+from abc import ABC, abstractmethod
+from enum import Enum
+from typing import Dict, List, Optional
 import numpy as np
 from fixedincomelib.model import (Model)
 from fixedincomelib.product import (Product)
+from fixedincomelib.valuation.valuation_parameters import ValuationParametersCollection
+from fixedincomelib.valuation.report import PVCashReport
 
-class ValuationEngine(metaclass=ABCMeta):
+### requests (probably will move to somewhere else)
+class ValuationRequest(Enum):
+    
+    PV_DETAILED = 'PVDetailed'
+    FIRST_ORDER_RISK = 'FirstOrderRisk'
+    CASHFLOWS_REPORT = 'CashflowsReport'
 
-    epsilon = 1e-4
-    def __init__(self, model : Model, valuationParameters : dict, product : Product):
-        self.model = model
-        self.product = product
-        self.valParams = valuationParameters
-        self.valueDate = self.model.valueDate
-        self.value_ = None
-        self.firstOrderRisk_ = None
+    @classmethod
+    def from_string(cls, value: str) -> 'ValuationRequest':
+        if not isinstance(value, str):
+            raise TypeError("value must be a string")
+        try:
+            return cls(value.upper())
+        except ValueError:
+            raise ValueError(f"Invalid token: {value}")
+
+    def to_string(self) -> str:
+        return self.value
+
+### 
+class ValuationEngineProduct(ABC):
+
+    def __init__(self, 
+                 model : Model, 
+                 valuation_parameters_collection : ValuationParametersCollection, 
+                 product : Product,
+                 request : ValuationRequest):
+
+        self.model_ = model
+        self.product_ = product
+        self.valuation_parameters_collection_ = valuation_parameters_collection
+        self.request_ = request
+        self.value_date = self.model_.value_date
+        self.value_ = 0.
+        self.cash_ = 0.
 
     @abstractmethod
-    def calculateValue(self):
+    def calculate_value(self):
         return
     
     # this should be mandatory as well, @abstractmethod
     # TODO
-    def calculateFirstOrderRisk(self,
-                                gradient=None,
-                                scaler: float = 1.0,
-                                accumulate: bool = False,
-                                ) -> None:
+    @abstractmethod
+    def calculate_first_order_risk(self, gradient=None, scaler: float = 1.0, accumulate: bool = False) -> None:
         return
 
-    # optional
-    def parRateOrSpread(self):
+    @abstractmethod
+    def create_cash_flows_report(self):
         pass
 
-    # optional
-    def createCashflowsReport(self):
+    @abstractmethod
+    def get_value(self, report : PVCashReport):
         pass
-
-    @property
-    def value(self):
-        return self.value_
     
-    @property
-    def firstOrderRisk(self):
-        return self.firstOrderRisk_
+    @abstractmethod
+    def get_cash(self, report : PVCashReport):
+        pass
+
+    # optional
+    def par_rate_or_spread(self):
+        pass
+
+class ValuationEngineAnalytics(ABC):
+
+    def __init__(self,
+                 model : Model, 
+                 valuation_parameters_collection : ValuationParametersCollection) -> None:
+        self.model_ = model
+        self.valuation_parameters_collection_= valuation_parameters_collection
+        self.value_date_ = model.value_date
+
+    @abstractmethod
+    def calculate_value(self) -> None:
+        pass
+
+    @abstractmethod
+    def calculate_risk(self, gradient : List[np.ndarray], scaler : Optional[float]=1., accumulate : Optional[bool]=False) -> None:
+        pass
+    
+    def value(self) -> float:
+        pass

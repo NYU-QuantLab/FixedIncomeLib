@@ -1,111 +1,97 @@
-from ast import Index
+import numpy as np
+from typing import List
 from fixedincomelib.date import *
 from fixedincomelib.data import *
 from fixedincomelib.market import *
 from fixedincomelib.model import *
+from fixedincomelib.product import *
+from fixedincomelib.utilities import *
 from fixedincomelib.yield_curve.build_method import YieldCurveBuildMethod
 
-# class YieldCurveFactory:
+class YieldCurve(Model):
 
+    _model_type = ModelType.YIELD_CURVE
+
+    def __init__(self,
+                 value_date : Date,
+                 data_collection : DataCollection,
+                 build_method_collection : BuildMethodColleciton) -> None:
+        super().__init__(value_date, self._model_type, data_collection, build_method_collection)
     
+    def discount_factor(self, index : ql.Index, expiry_date : Date):
+        this_component : YieldCurveModelComponent = self.retrieve_model_component(index)
+        return this_component.discount_factor(expiry_date)
 
-#     ### api 1
-#     @staticmethod
-#     def create_model_yield_curve(
-#         value_date : Date,
-#         data_collection : DataCollection, 
-#         build_method_collection : BuildMethodColleciton):
-
-#         build_methods = YieldCurveFactory.\
-#             sort_and_flatten_build_method_collection(build_method_collection)
-#         for build_method in build_methods:
-#             build_method.interpolation
-#             data_types = build_method.calibration_instruments()
-#             mkt_data = []
-#             for data_type in data_types:
-#                 data_conv = build_method[data_type]
-#                 mkt_data.append(data_collection.get_data_from_data_collection(
-#                                 data_type, data_conv))
-            
-    
-#     @staticmethod
-#     def calibrate_single_component(
-#         value_date : Date, 
-
-#     )
-
-#     ### utils
-#     @staticmethod
-#     def sort_and_flatten_build_method_collection(
-#         build_method_collection : BuildMethodColleciton):
-#         # TODO: sort out dependency
-#         ordered_bm_list = []
-#         for _, bm in build_method_collection.items:
-#             ordered_bm_list.append(bm)
-#         return ordered_bm_list
-
-# class YieldCurveModelComponent(ModelComponent):
-
-#     def __init__(self, 
-#                  value_date : Date, 
-#                  calibration_data : DataCollection, 
-#                  build_method : YieldCurveBuildMethod) -> None:
+    def discount_factor_gradient_wrt_state(
+            self, 
+            index : ql.Index,
+            expiry_date : Date,
+            gradient_vector : List[np.ndarray],
+            scaler : Optional[float]=1.,
+            accumulate : Optional[bool]=False):
         
-#         super().__init__(value_date, calibration_data, build_method)
-#         interpolation_method = build_method.interpolation_method
-#         extrapolation_method = build_method.extrapolation_method
-        
-#         self.axis1 = []
-#         self.timeToDate = []
-#         self.ifrInterpolator = None
-#         self.targetIndex_ = None
-#         self.isOvernightIndex_ = False
-#         # i don't like this implementation
-#         if '1B' in self.target_: 
-#             self.targetIndex_ = IndexRegistry().get(self.target_)
-#             self.isOvernightIndex_ = True
-#         else:
-#             tokenizedIndex = self.target_.split('-')
-#             tenor = tokenizedIndex[-1]
-#             self.targetIndex_ = IndexRegistry().get('-'.join(tokenizedIndex[:-1]), tenor)
-#         self.calibrate()
-
-#     def calibrate(self):
-#         ### TODO: calibration to market instruments instead of directly feeding ifr
-#         this_df = self.dataCollection_[self.dataCollection_['INDEX'] == self.target_]
-#         ### TODO: axis1 can be a combination of dates and tenors
-#         ###       for now, i assume they're all tenor based
-
-#         cal = self.targetIndex_.fixingCalendar()
-#         for each in this_df['AXIS1'].values.tolist():
-#             this_dt = Date(cal.advance(self.valueDate_, Period(each), self.targetIndex_.businessDayConvention()))
-#             self.axis1.append(this_dt)
-#             self.timeToDate.append(accrued(self.valueDate_, this_dt))
-#         self.stateVars = this_df['VALUES'].values.tolist()
-#         self.ifrInterpolator = Interpolator1D(self.timeToDate, self.stateVars, self.interpolationMethod_)
-    
-#     def getStateVarInterpolator(self):
-#         return self.ifrInterpolator
-
-#     @property
-#     def isOvernightIndex(self):
-#         return self.isOvernightIndex_
-    
-#     @property
-#     def targetIndex(self):
-#         return self.targetIndex_
-
+        this_component : YieldCurveModelComponent = self.retrieve_model_component(index)
+        component_index = self.component_indices[index.name()]
+        this_gradient = gradient_vector[component_index]
+        this_component.discount_factor_gradient_wrt_state(expiry_date, this_gradient, scaler, accumulate)
 
 class YieldCurveModelComponent(ModelComponent):
 
     def __init__(self, 
-                 value_date : Date, 
+                 value_date : Date,
                  component_identifier : ql.Index,
-                 calibration_data : DataCollection, 
-                 build_method : BuildMethod) -> None:
+                 calibration_product : list[Product],
+                 state_data : np.ndarray,
+                 build_method : YieldCurveBuildMethod) -> None:
         
-        self.valueDate_ = value_date
-        self.calibration_data_ = calibration_data
-        self.build_method_ = build_method
-        self.target_ = build_method.target
-        self.state_vars_ = []
+        super().__init__(value_date, component_identifier, calibration_product, state_data, build_method)
+        assert len(state_data) == 2
+        self.num_state_data_ = len(state_data[0])
+        self.interpolator_ = InterpolatorFactory.create_1d_interpolator(
+            state_data[0], 
+            state_data[1],
+            self.build_method.interpolation_method,
+            self.build_method.extrapolation_method)
+
+    def discount_factor(self, expiry_date : Date):
+        time_to_expiry = accrued(self.value_date, expiry_date)
+        exponent = self.state_data_interpolator.integrate(0., time_to_expiry)
+        return np.exp(-exponent)
+
+    def discount_factor_gradient_wrt_state(
+            self, 
+            expiry_date : Date,
+            gradient_vector : np.ndarray,
+            scaler : Optional[float]=1.,
+            accumulate : Optional[bool]=False):
+        
+        time_to_expiry = accrued(self.value_date, expiry_date)
+        exponent = self.state_data_interpolator.integrate(0., time_to_expiry)
+
+        # df risk w.r.t state variables
+        d_df_d_exponent = - np.exp(-exponent)
+        grad = self.state_data_interpolator.gradient_of_integrated_value_wrt_ordinate(0, time_to_expiry)
+        grad *= d_df_d_exponent * scaler
+
+        # finalize
+        if accumulate:
+            assert len(gradient_vector) == len(grad)
+            gradient_vector += grad
+        else:
+            gradient_vector[:] = grad
+
+    # def forward_rate(self, effective_date : Date, termination_date : Date):
+    #     day_counter : ql.DayCounter = self.component_identifier.dayCounter()
+    #     tau = day_counter.yearFraction(effective_date, termination_date)
+    #     time_to_effective_date = accrued(self.value_date, effective_date)
+    #     time_to_termination_date = accrued(self.value_date, termination_date)
+    #     exponent = self.state_data_interpolator.integrate(
+    #         time_to_effective_date,
+    #         time_to_termination_date
+    #     )
+    #     forward_rate = 1. / tau * (np.exp(exponent) - 1)
+
+    @property
+    def state_data_interpolator(self) -> Interpolator1D:
+        return self.interpolator_
+    

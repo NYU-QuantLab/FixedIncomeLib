@@ -1,15 +1,15 @@
 {
-    "USD-LIBOR-BBA": "USDLibor",
+    "USD-LIBOR-BBA-3M": "USDLibor",
     "SOFR-1B":       "Sofr",
     "FF-1B":         "FedFunds",
-    "GBP-LIBOR-BBA": "GBPLibor",
+    "GBP-LIBOR-BBA-3M": "GBPLibor",
     "SONIA-1B":      "Sonia",
-    "CAD-LIBOR-BA":  "CADLibor",
+    "CAD-LIBOR-BA-3M":  "CADLibor",
     "CORRA-1B":      "Corra",
-    "EURIBOR":       "Euribor",
+    "EURIBOR-6M":       "Euribor",
     "EONIA":         "Eonia",
-    "AUD-LIBOR-BBA": "AUDLibor",
+    "AUD-LIBOR-BBA-3M": "AUDLibor",
     "AONIA-1B":      "Aonia",
-    "JPY-LIBOR-BBA": "JPYLibor",
+    "JPY-LIBOR-BBA-3M": "JPYLibor",
     "TONIA-1B":      "Tonar"
 }  

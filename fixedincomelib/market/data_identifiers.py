@@ -51,17 +51,26 @@ class DataIdentifierOvernightIndexSwap(DataIdentifier):
     def unit(self):
         return 0.0001
 
-class DataIdentifierRFRJump(DataIdentifier):
+class DataIdentifierJump(DataIdentifier):
 
     _data_type = 'Jump'
 
-    def __init__(self, data_convention: DataConventionRFRJump) -> None:
+    def __init__(self, data_convention: DataConventionJump) -> None:
         super().__init__(data_convention)
 
     def unit(self):
         return 0.0001
 
-    
+class DataIdentifierIFR(DataIdentifier):
+
+    _data_type = 'Instantaneous Forward Rate'
+
+    def __init__(self, data_convention: DataConventionIFR) -> None:
+        super().__init__(data_convention)
+
+    def unit(self):
+        return 0.0001
+
 class DataIdentifierSwaptionNormalVolatility(DataIdentifier):
 
     _data_type = 'Swaption Normal Volatility'
@@ -146,7 +155,8 @@ class DataIdentifierCapFloorSABRRho(DataIdentifier):
 ### registration
 DataIdentifierRegistry().register(DataIdentifierOvernightIndexFuture._data_type.upper(), DataIdentifierOvernightIndexFuture)
 DataIdentifierRegistry().register(DataIdentifierOvernightIndexSwap._data_type.upper(), DataIdentifierOvernightIndexSwap)
-DataIdentifierRegistry().register(DataIdentifierRFRJump._data_type.upper(), DataIdentifierRFRJump)
+DataIdentifierRegistry().register(DataIdentifierJump._data_type.upper(), DataIdentifierJump)
+DataIdentifierRegistry().register(DataIdentifierIFR._data_type.upper(), DataIdentifierIFR)
 DataIdentifierRegistry().register(DataIdentifierSwaptionNormalVolatility._data_type.upper(), DataIdentifierSwaptionNormalVolatility)
 DataIdentifierRegistry().register(DataIdentifierSwaptionSABRBeta._data_type.upper(), DataIdentifierSwaptionSABRBeta)
 DataIdentifierRegistry().register(DataIdentifierSwaptionSABRNu._data_type.upper(), DataIdentifierSwaptionSABRNu)

@@ -1,102 +1,192 @@
+import copy
 import numpy as np
+from abc import ABC, abstractmethod
+from enum import Enum
+from typing import List, Optional
 
-### 1D Interpolator (only support PIECEWISE_CONSTANT) for now
-class Interpolator1D(object):
+class InterpMethod(Enum):
 
-    def __init__(self, axis, values, method):        
-        self.method = method
-        self.axis = axis
-        self.values = values
-        # only supports pwc
-        assert method == "PIECEWISE_CONSTANT"
-        assert len(self.axis) == len(self.values)
+    PIECEWISE_CONSTANT_LEFT_CONTINUOUS = 'PIECEWISE_CONSTANT_LEFT_CONTINUOUS'
+    LINEAR = 'LINEAR'
 
-    def interpolate(self, time):
+    @classmethod
+    def from_string(cls, value: str) -> 'InterpMethod':
+        if not isinstance(value, str):
+            raise TypeError("value must be a string")
+        try:
+            return cls(value.upper())
+        except ValueError:
+            raise ValueError(f"Invalid token: {value}")
 
-        # left extraplation (flat)
-        if time < self.axis[0]:
-            return self.values[0]
+    def to_string(self) -> str:
+        return self.value
 
-        # central region
-        for i in range(1, len(self.axis)):
-            if time >= self.axis[i-1] and time < self.axis[i]:
-                return self.values[i]
-        
-        # right extrapolation
-        return self.values[-1]
+class ExtrapMethod(Enum):
     
-    def integral(self, start, end):
-        assert start <= end
+    FLAT = 'FLAT'
+    LINEAR = 'LINEAR'
+
+    @classmethod
+    def from_string(cls, value: str) -> 'ExtrapMethod':
+        if not isinstance(value, str):
+            raise TypeError("value must be a string")
+        try:
+            return cls(value.upper())
+        except ValueError:
+            raise ValueError(f"Invalid token: {value}")
+
+    def to_string(self) -> str:
+        return self.value
+
+class Interpolator1D(ABC):
+
+    def __init__(self,
+                 axis1 : np.ndarray, 
+                 values : np.ndarray, 
+                 interpolation_method : InterpMethod,
+                 extrpolation_method : ExtrapMethod) -> None:
+
+        self.axis1_ = axis1
+        self.values_ = values
+        self.interp_method_ = interpolation_method
+        self.extrap_method_ = extrpolation_method
+        self.length_ = len(self.axis1)
+
+    @abstractmethod
+    def interpolate(self, x : float) -> float:
+        pass
+
+    @abstractmethod
+    def integrate(self, start_x : float, end_x : float):
+        pass
+
+    @abstractmethod
+    def gradient_wrt_ordinate(self, x : float):
+        pass
+
+    @abstractmethod
+    def gradient_of_integrated_value_wrt_ordinate(self, start_x : float, end_x : float):
+        pass
+    
+    @property
+    def axis1(self) -> np.ndarray:
+        return self.axis1_
+    
+    @property
+    def values(self) -> np.ndarray:
+        return self.values_
+    
+    @property
+    def length(self) -> int:
+        return self.length_
+
+    @property
+    def interp_method(self) -> str:
+        return self.interp_method_.to_string()
+    
+    @property
+    def extrap_method(self) -> str:
+        return self.extrap_method_.to_string()
+
+class Interpolator1DPCP(Interpolator1D):
+
+    def __init__(self, axis1: np.ndarray, values: np.ndarray, extrpolation_method: ExtrapMethod) -> None:
+        super().__init__(axis1, values, InterpMethod.LINEAR, extrpolation_method)
+        assert self.extrap_method_ == ExtrapMethod.FLAT
+
+    def interpolate(self, x: float) -> float:
+        if x <= self.axis1_[0]:
+            return self.values_[0]  # flat extrapolation
+        elif x >= self.axis1_[-1]:
+            return self.values_[-1]  # flat extrapolation
+        else:
+            idx = np.searchsorted(self.axis1_, x, side='right') - 1
+            return self.values_[idx]
+
+    def integrate(self, start_x: float, end_x: float) -> float:
+
+        if start_x > end_x:
+            start_x, end_x = end_x, start_x
+            sign = -1
+        else:
+            sign = 1
+
+        integral = 0.0
         
-        # find starting and end index
-        startIdx, endIdx = len(self.axis), len(self.axis)
-        for i in range(0, len(self.axis)):
-            if startIdx == len(self.axis) and start < self.axis[i]:
-                startIdx = i
-            if end < self.axis[i]:
-                endIdx = i
-                break
+        # Loop over all intervals including extrapolation zones
+        for i in range(self.length_):
+            interval_start = self.axis1_[i]
+            interval_end = self.axis1_[i+1] if i+1 < self.length_ else np.inf
+            
+            # For the very first interval, allow left extrapolation
+            if i == 0:
+                interval_start = -np.inf
+            
+            # Compute overlap with [start_x, end_x]
+            overlap_start = max(start_x, interval_start)
+            overlap_end = min(end_x, interval_end)
+            
+            if overlap_end > overlap_start:
+                integral += (overlap_end - overlap_start) * self.values_[i]
+
+        return sign * integral
+
+    def gradient_wrt_ordinate(self, x: float) -> np.ndarray:
+        grad = np.zeros_like(self.values_)
         
-        # same block
-        if startIdx == endIdx:
-            return (end - start) * self.values[-1 if startIdx == len(self.axis) else startIdx]
+        if x <= self.axis1_[0]:
+            grad[0] = 1.0
+        elif x >= self.axis1_[-1]:
+            grad[-1] = 1.0
+        else:
+            idx = np.searchsorted(self.axis1_, x, side='right') - 1
+            grad[idx] = 1.0
 
-        # accumulation
-        # left
-        runningSum = (self.axis[startIdx] - start) * self.values[startIdx]
-        # center
-        for i in range(startIdx + 1, endIdx):
-            runningSum += (self.axis[i] - self.axis[i-1]) * self.values[i]
-        # right
-        runningSum += (end - self.axis[endIdx - 1]) * self.values[-1 if endIdx == len(self.axis) else endIdx]
-        
-        return runningSum
+        return grad
 
-class Interpolator2D(object):
+    def gradient_of_integrated_value_wrt_ordinate(self, start_x: float, end_x: float) -> np.ndarray:
+        n = len(self.values_)
+        grad = np.zeros(n, dtype=float)
 
-    def __init__(
-            self,
-            axis1: np.ndarray, 
-            axis2: np.ndarray, 
-            values: np.ndarray, 
-            method: str):
-        self.method = method
-        self.axis1 = axis1
-        self.axis2 = axis2
-        self.values = values
-        assert method == "LINEAR", 'Only LINEAR Supported'
-        assert axis1.ndim == 1 and axis2.ndim == 1
-        assert values.shape == (len(axis1), len(axis2))
+        # ---- left tail: (-inf, axis1[0]] -> values[0]
+        left_overlap = min(end_x, self.axis1_[0]) - start_x
+        if left_overlap > 0:
+            grad[0] += left_overlap
 
-    def interpolate(self, x: float, y: float) -> float:
+        # ---- middle buckets: (axis1[i-1], axis1[i]] -> values[i]
+        for i in range(1, n):
+            lower = max(start_x, self.axis1_[i - 1])
+            upper = min(end_x, self.axis1_[i])
+            if upper > lower:
+                grad[i] += upper - lower
 
-        x = min(max(x, self.axis1[0]), self.axis1[-1])
-        y = min(max(y, self.axis2[0]), self.axis2[-1])
+        # ---- right tail: (axis1[-1], +inf) -> values[-1]
+        right_overlap = end_x - max(start_x, self.axis1_[-1])
+        if right_overlap > 0:
+            grad[-1] += right_overlap
 
-        # --- find surrounding indices ---
-        i = np.searchsorted(self.axis1, x) - 1
-        j = np.searchsorted(self.axis2, y) - 1
-        # handle exact right edge
-        if i == len(self.axis1) - 1:
-            i -= 1
-        if j == len(self.axis2) - 1:
-            j -= 1
+        return grad
 
-        x1, x2 = self.axis1[i], self.axis1[i+1]
-        y1, y2 = self.axis2[j], self.axis2[j+1]
-        Q11 = self.values[i,   j]
-        Q21 = self.values[i+1, j]
-        Q12 = self.values[i,   j+1]
-        Q22 = self.values[i+1, j+1]
+class InterpolatorFactory:
 
-        if x2 == x1 and y2 == y1:
-            return Q11
-        elif x2 == x1:
-            # linear in y
-            return Q11 + (Q12 - Q11) * (y - y1)/(y2 - y1)
-        elif y2 == y1:
-            # linear in x
-            return Q11 + (Q21 - Q11) * (x - x1)/(x2 - x1)
+    @staticmethod
+    def create_1d_interpolator(axis1 : np.ndarray | List, 
+                               values : np.ndarray | List, 
+                               interpolation_method : InterpMethod,
+                               extrpolation_method : ExtrapMethod):
 
-        # --- bilinear interpolation formula ---
-        return (Q11 * (x2 - x) * (y2 - y) + Q21 * (x - x1) * (y2 - y) + Q12 * (x2 - x) * (y - y1) + Q22 * (x - x1) * (y - y1)) / ((x2 - x1) * (y2 - y1))
+
+        axis1_ = copy.deepcopy(axis1)
+        values_ = copy.deepcopy(values)
+        if isinstance(axis1_, list):
+            axis1_ = np.array(axis1_)
+        if isinstance(values_, list):
+            values_ = np.array(values_)
+        assert len(axis1_.shape) == 1 and len(values_.shape) == 1
+        assert len(axis1_) == len(values_)
+        assert np.all(np.diff(axis1_) >= 0)
+    
+        if interpolation_method == InterpMethod.PIECEWISE_CONSTANT_LEFT_CONTINUOUS:
+            return Interpolator1DPCP(axis1_, values_, extrpolation_method)
+        else:
+            raise Exception('Currently only support PCP interpolation')

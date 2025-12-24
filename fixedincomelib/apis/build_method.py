@@ -19,7 +19,8 @@ def qfWriteBuildMethodToFile(build_method : BuildMethod, path : str):
 def qfReadBuildMethodFromFile(path : str):
     with open(path, 'rb') as handle:
         this_dict = pickle.load(handle)
-        this_key = f'{YieldCurveBuildMethod._build_method_type}_DES'
+        this_type = this_dict['TYPE']
+        this_key = f'{this_type}_DES'
         func = BuildMethodBuilderRregistry().get(this_key)
         return func(this_dict)
          
