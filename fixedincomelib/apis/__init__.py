@@ -6,3 +6,4 @@ from fixedincomelib.apis.product import *
 from fixedincomelib.apis.numerics import *
 from fixedincomelib.apis.model import *
 from fixedincomelib.apis.valuations import *
+from fixedincomelib.apis.analytics import *

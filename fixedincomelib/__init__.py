@@ -3,7 +3,7 @@ from .date import *
 from .data import *
 from .model import *
 from .product import *
-# from .analytics import *
+from .analytics import *
 # from .sabr import *
 # from .utilities import *
 # from .valuation import *
