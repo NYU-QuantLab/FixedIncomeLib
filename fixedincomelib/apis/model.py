@@ -41,14 +41,7 @@ def qfDiscountFactor(
         yc_model = model.sub_model
     assert yc_model.model_type == ModelType.YIELD_CURVE.to_string()
 
-    index_obj = None
-    try:
-        index_obj = IndexRegistry().get(index)
-    except:
-        tenor = index.split('-')[-1]
-        prefix = index.replace(f'-{tenor}', '')
-        index_obj = IndexRegistry().get(prefix, term=Period(tenor))
-
+    index_obj = IndexRegistry().get(index)
     return yc_model.discount_factor(index_obj, Date(expiry_date))
 
 # dont think this needs to be exposed, just for testing purpose
@@ -65,13 +58,7 @@ def qfDiscountFactorGradient(
         yc_model = model.sub_model
     assert yc_model.model_type == ModelType.YIELD_CURVE.to_string()
 
-    index_obj = None
-    try:
-        index_obj = IndexRegistry().get(index)
-    except:
-        tenor = index.split('-')[-1]
-        prefix = index.replace(f'-{tenor}', '')
-        index_obj = IndexRegistry().get(prefix, term=Period(tenor))
+    index_obj = IndexRegistry().get(index)
 
     if len(gradient) == 0:
         yc_model.resize_gradient(gradient)

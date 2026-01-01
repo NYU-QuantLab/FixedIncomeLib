@@ -350,14 +350,9 @@ class DataConventionIFR(DataConvention):
         super().__init__(unique_name, DataConventionIFR._type, self.__dict__.copy())
 
     @property
-    def index(self) -> ql.QuantLib.OvernightIndex:
-        try:
-            return IndexRegistry().get(self.index_)
-        except: 
-            tenor = self.index_.split('-')[-1]
-            index_red = str(self.index_).replace(f'-{tenor}', '')
-            return IndexRegistry().get(index_red, term=tenor)
-
+    def index(self) -> ql.Index:
+        return IndexRegistry().get(self.index_)
+    
     @property
     def business_day_convention(self) -> BusinessDayConvention:
         return BusinessDayConvention(self.business_day_convention_)

@@ -1,6 +1,8 @@
 import pandas as pd
 from fixedincomelib.analytics import *
 
+# european option
+
 def qfEuropeanOptionLogNormal(
     forward : float,
     strike : float,
@@ -16,8 +18,12 @@ def qfEuropeanOptionLogNormal(
         log_normal_sigma,
         CallOrPut.from_string(option_type),
         calc_risk)
+    
+    # remove tte risk
+    if SimpleMetrics.TTE_RISK in res:
+        res.pop(SimpleMetrics.TTE_RISK)
 
-    return pd.DataFrame(res.items(), columns=['Name', 'Value'])
+    return res
 
 def qfEuropeanOptionImpliedLogNormalVol(
     pv: float,
@@ -37,7 +43,7 @@ def qfEuropeanOptionImpliedLogNormalVol(
         calc_risk,
         tol)
 
-    return pd.DataFrame(res.items(), columns=['Name', 'Value'])
+    return res
 
 def qfEuropeanOptionNormal(
     forward : float,
@@ -55,7 +61,11 @@ def qfEuropeanOptionNormal(
         CallOrPut.from_string(option_type),
         calc_risk)
 
-    return pd.DataFrame(res.items(), columns=['Name', 'Value'])
+    # remove tte risk
+    if SimpleMetrics.TTE_RISK in res:
+        res.pop(SimpleMetrics.TTE_RISK)
+
+    return res
 
 def qfEuropeanOptionImpliedNormalVol(
     pv: float,
@@ -75,13 +85,14 @@ def qfEuropeanOptionImpliedNormalVol(
         calc_risk,
         tol)
 
-    return pd.DataFrame(res.items(), columns=['Name', 'Value'])
+    return res
 
 def qfEuropeanOptionNormalVolFromLogNormalVol(
     forward: float,
     strike: float,
     time_to_expiry: float,
     log_normal_sigma: float,
+    shift : Optional[float]=0.,
     calc_risk : Optional[bool]=False, 
     tol: Optional[float]=1e-8):
 
@@ -90,16 +101,18 @@ def qfEuropeanOptionNormalVolFromLogNormalVol(
         strike,
         time_to_expiry,
         log_normal_sigma,
-        calc_risk, 
+        calc_risk,
+        shift,
         tol) 
     
-    return pd.DataFrame(res.items(), columns=['Name', 'Value'])
+    return res
 
 def qfEuropeanOptionLogNormalVolFromNormalVol(
     forward: float,
     strike: float,
     time_to_expiry: float,
     normal_sigma: float,
+    shift : Optional[float]=0.,
     calc_risk : Optional[bool]=False, 
     tol: Optional[float]=1e-8):
 
@@ -108,7 +121,76 @@ def qfEuropeanOptionLogNormalVolFromNormalVol(
         strike,
         time_to_expiry,
         normal_sigma,
-        calc_risk, 
+        calc_risk,
+        shift,
         tol) 
     
-    return pd.DataFrame(res.items(), columns=['Name', 'Value'])
+    return res
+
+### sabr 
+
+def qfEuropeanOptionSABRLogNormalSigma(
+    forward : float,
+    strike : float,
+    time_to_expiry : float,
+    alpha : float, 
+    beta : float,
+    rho : float, 
+    nu : float,
+    shift : Optional[float]=0.,
+    calc_risk : Optional[bool]=False):
+
+    res = SABRAnalytics.lognormal_vol_from_alpha(
+        forward, strike, time_to_expiry, alpha, beta, rho, nu, shift, calc_risk)
+    
+    return res
+
+def qfEuropeanOptionSABRAlphaFromATMLogNormalSigma( \
+    forward : float,
+    time_to_expiry : float,
+    sigma_atm_log_normal : float,
+    beta : float,
+    rho : float, 
+    nu : float,
+    shift : Optional[float]=0.,
+    calc_risk : Optional[bool]=False,
+    max_iter : Optional[int]=50,
+    tol : Optional[float]=1e-8):
+    
+    res = SABRAnalytics.alpha_from_atm_lognormal_sigma( \
+        forward, time_to_expiry, sigma_atm_log_normal, beta, rho, nu, shift, calc_risk, max_iter, tol)
+    
+    return res
+
+def qfEuropeanOptionSABRAlphaFromATMNormalSigma( \
+    forward : float,
+    time_to_expiry : float,
+    sigma_atm_normal : float,
+    beta : float,
+    rho : float, 
+    nu : float,
+    shift : Optional[float]=0.,
+    calc_risk : Optional[bool]=False,
+    max_iter : Optional[int]=50,
+    tol : Optional[float]=1e-8):
+
+    res = SABRAnalytics.alpha_from_atm_normal_sigma( \
+        forward, time_to_expiry, sigma_atm_normal, beta, rho, nu, shift, calc_risk, max_iter, tol)
+    
+    return res
+
+def qfEuropeanOptionSABRATMNormalSigmaFromAlpha(
+    forward : float,
+    time_to_expiry : float,
+    alpha : float, 
+    beta : float,
+    rho : float, 
+    nu : float,
+    shift : Optional[float]=0.,
+    calc_risk : Optional[bool]=False,
+    tol : Optional[float]=1e-8):
+
+    res = SABRAnalytics.atm_normal_sigma_from_alpha(
+        forward, time_to_expiry, alpha, beta, rho, nu, shift, calc_risk, tol)
+    
+    return res
