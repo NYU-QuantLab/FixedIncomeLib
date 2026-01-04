@@ -1,3 +1,4 @@
+import pickle
 from fixedincomelib.date import *
 from fixedincomelib.data import *
 from fixedincomelib.model import *
@@ -30,6 +31,19 @@ def qfCreateModel(
             build_method_collection)
     else:
         raise Exception('Currently only support model type yield curve.')
+
+def qfWriteModelObjectToFile(model : Model, path : str):
+    this_dict = model.serialize()
+    with open(path, 'wb') as handle:
+        pickle.dump(this_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    return 'DONE'
+
+def qfReadModelFromFile(path : str):
+    with open(path, 'rb') as handle:
+        this_dict = pickle.load(handle)
+        assert 'MODEL_TYPE' in this_dict
+        func = ModelDeserializerRegistry().get(this_dict['MODEL_TYPE'])
+        return func(this_dict)
 
 def qfDiscountFactor(
     model : Model,

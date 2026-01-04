@@ -89,3 +89,7 @@ class YieldCurveBuilder:
         for _, bm in build_method_collection.items:
             ordered_bm_list.append(bm)
         return ordered_bm_list
+    
+
+### registry
+ModelBuilderRegistry().register(YieldCurve._model_type.to_string(), YieldCurveBuilder.create_model_yield_curve)

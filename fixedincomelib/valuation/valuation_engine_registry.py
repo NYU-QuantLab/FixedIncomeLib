@@ -7,26 +7,9 @@ from fixedincomelib.market import CompoundingMethod
 from fixedincomelib.model.model import Model
 from fixedincomelib.utilities import Registry
 from fixedincomelib.valuation.valuation_engine import (
-    ValuationEngineProduct, ValuationEngineAnalytics)
-from fixedincomelib.valuation.valuation_parameters import ValuationParametersCollection
+    ValuationEngineProduct, ValuationEngineAnalytics, ValuationRequest)
+from fixedincomelib.valuation.valuation_parameters import AnalyticValParam, ValuationParametersCollection
 
-class ValuationMode(Enum):
-
-    ANALYTIC = 'ANALYTIC'
-    FINITE_DIFFERENCE = 'FDM'
-    MONTE_CARLO = 'MC'
-
-    @classmethod
-    def from_string(cls, value: str) -> 'ValuationMode':
-        if not isinstance(value, str):
-            raise TypeError("value must be a string")
-        try:
-            return cls(value.lower())
-        except ValueError:
-            raise ValueError(f"Invalid token: {value}")
-
-    def to_string(self) -> str:
-        return self.value
 
 class ValuationEngineProductRegistry(Registry):
 
@@ -43,18 +26,24 @@ class ValuationEngineProductRegistry(Registry):
         super().register(key, value)
         self._map[key] = value
 
-    def new_valuation_engine(self,
+    @classmethod
+    def new_valuation_engine(cls,
                              model : Model,
                              product : Product,
                              valuation_parameters_collection : ValuationParametersCollection,
-                             valuation_mode: ValuationMode) -> ValuationEngineProduct:
+                             valuation_request: ValuationRequest) -> ValuationEngineProduct:
         
-        key = (model.model_type, product.product_type, valuation_mode.to_string())
-        engine_cls = self.get(*key)
+        vp = AnalyticValParam._vp_type
+        if not valuation_parameters_collection.has_vp_type(AnalyticValParam._vp_type):
+            # TODO: if it is MC, then vp = MCParameter ...
+            vp = ''
+
+        key = (model.model_type, product.product_type, vp)
+        engine_cls = ValuationEngineProductRegistry().get(key)
         if engine_cls is None:
-            raise KeyError(f"No engine registered for key {key}")
+            raise KeyError(f'No engine registered for key {key}')
         
-        return engine_cls(model, valuation_parameters_collection, product)
+        return engine_cls(model, valuation_parameters_collection, product, valuation_request)
 
 class ValuationEngineAnalyticIndexRegistry(Registry):
 

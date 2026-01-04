@@ -1,4 +1,3 @@
-from token import OP
 import QuantLib as ql
 import numpy as np
 from typing import Optional, List
@@ -86,9 +85,7 @@ class ValuationEngineAnalyticsOvernightIndex(ValuationEngineAnalytics):
                 next_date = calendar.advance(cur_date, Period('1D'), business_day_convention)
                 self.daily_acc_.append(day_counter.yearFraction(cur_date, next_date))
                 cur_date = next_date
-            # self.daily_acc_ = np.array(self.daily_acc_)
-            # self.daily_acc_ = self.daily_acc_ / self.daily_acc_.sum() # normalize
-            # self.daily_fixings_ = np.array(self.daily_fixings_)
+
 
     def calculate_value(self):
         

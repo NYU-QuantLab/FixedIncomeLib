@@ -280,7 +280,6 @@ class SABRAnalytics:
             
         return final_res
 
-
     @staticmethod
     def _vol_and_risk(F, K, T, a, b, r, n, calc_risk = False, atm_log_fk_cut=1e-12) -> Tuple[float, Dict[SabrMetircs, float]]:
 
@@ -306,6 +305,7 @@ class SABRAnalytics:
                 greeks[SabrMetircs.D_LN_SIGMA_D_FORWARD] = -(1 - b) / F * sigma - (a * T / Fp) * ((2 * (1 - b) * C1 + C2) / F)
                 greeks[SabrMetircs.D_LN_SIGMA_D_TTE] = (a / Fp) * C
                 greeks[SabrMetircs.D_LN_SIGMA_D_STRIKE] = 0.
+
             return sigma, greeks
 
         # non atm
@@ -323,6 +323,7 @@ class SABRAnalytics:
         sigma = A * B * D
 
         if calc_risk:
+
             dz = {
                 SabrMetircs.D_LN_SIGMA_D_ALPHA : - z / a,
                 SabrMetircs.D_LN_SIGMA_D_NU : z / n,

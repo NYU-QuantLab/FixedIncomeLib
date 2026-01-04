@@ -1,6 +1,7 @@
 from typing import List, Optional, Union, Self, Any, Dict
 from abc import ABC, abstractmethod
 import pandas as pd
+import QuantLib as ql
 from fixedincomelib.market import Currency
 from fixedincomelib.market.registries import IndexRegistry
 from fixedincomelib.utilities.utils import Registry
@@ -84,8 +85,13 @@ class ValuationParametersCollection:
 
     def __init__(self, vp_list : List[ValuationParameters]) -> None:
         self.vp_col_ = {}
+        has_analytic_vp = False
         for each in vp_list:
+            if each.vp_type.upper() == AnalyticValParam._vp_type.upper():
+                has_analytic_vp = True
             self.vp_col_[each.vp_type.upper()] = each
+        if not has_analytic_vp:
+            self.vp_col_[AnalyticValParam._vp_type.upper()] = AnalyticValParam({'Analytic' : ''})
         self.num_vps_ = len(self.vp_col_)
 
     @property
@@ -96,12 +102,14 @@ class ValuationParametersCollection:
     def items(self):
         return self.vp_col_.items()
 
+    def has_vp_type(self, vp_type :str):
+        return vp_type.upper() in self.vp_col_
+
     def get_vp_from_build_method_collection(
             self, 
-            target : str, 
             type : str) -> ValuationParameters:
 
-        if type not in self.vp_col_:
+        if not self.has_vp_type(type):
             raise Exception(f'Cannot find {type}.')
         return self.vp_col_[type.upper()]
     
@@ -141,6 +149,18 @@ class ValuationParametersCollection:
 
 ##### derived vp classes
 
+class AnalyticValParam(ValuationParameters):
+    
+    _version = 1
+    _vp_type = 'ANALYTIC PARAMETER'
+
+    def __init__(self, content : Union[List, dict]):
+        super().__init__('ANALYTIC PARAMETER', content)
+
+    def get_valid_keys(self) -> set:
+        return {'ANALYTIC'}
+
+
 class FundingIndexParameter(ValuationParameters):
 
     _version = 1
@@ -166,12 +186,14 @@ class FundingIndexParameter(ValuationParameters):
             'CURRENCIES',
             'FUNDING INDICES'}
     
-    def get_funding_index(self, currency : Optional[Currency]=None):
+    def get_funding_index(self, currency : Optional[Currency]=None) -> ql.Index:
         if currency and currency in self.funding_index_map_:
             return self.funding_index_map_[currency]
         else:
             return self.funding_index_
 
 ### register
+ValutionParametersBuilderRegistry().register(AnalyticValParam._vp_type, AnalyticValParam)
 ValutionParametersBuilderRegistry().register(FundingIndexParameter._vp_type, FundingIndexParameter)
+ValutionParametersBuilderRegistry().register(f'{AnalyticValParam._vp_type}_DES', AnalyticValParam.deserialize)
 ValutionParametersBuilderRegistry().register(f'{FundingIndexParameter._vp_type}_DES', FundingIndexParameter.deserialize)

@@ -1,5 +1,7 @@
 import numpy as np
 from typing import List
+
+from yaml import serialize
 from fixedincomelib.date import *
 from fixedincomelib.data import *
 from fixedincomelib.market import *
@@ -10,7 +12,9 @@ from fixedincomelib.yield_curve.build_method import YieldCurveBuildMethod
 
 class YieldCurve(Model):
 
+    _version = 1
     _model_type = ModelType.YIELD_CURVE
+    
 
     def __init__(self,
                  value_date : Date,
@@ -34,6 +38,30 @@ class YieldCurve(Model):
         component_index = self.component_indices[index.name()]
         this_gradient = gradient_vector[component_index]
         this_component.discount_factor_gradient_wrt_state(expiry_date, this_gradient, scaler, accumulate)
+
+    def serialize(self) -> dict:
+        content = {}
+        content['VERSION'] = YieldCurve._version
+        content['MODEL_TYPE'] = YieldCurve._model_type.to_string()
+        content['VALUE_DATE'] = self.value_date.ISO()
+        content['BUILD_METHOD_COLLECTION'] = self.build_method_collection.serialize()
+        content['DATA_COLLECTION'] = self.data_collection.serialize()
+        return content
+
+    @classmethod
+    def deserialize(cls, input_dict : dict) -> 'YieldCurve':
+        input_dict_  = input_dict.copy()
+        assert 'VERSION' in input_dict_
+        version = input_dict_['VERSION']
+        assert 'MODEL_TYPE' in input_dict_
+        model_type = input_dict_['MODEL_TYPE']
+        assert 'VALUE_DATE' in input_dict_
+        value_date = Date(input_dict_['VALUE_DATE'])
+        bmc = BuildMethodColleciton.deserialize(input_dict_['BUILD_METHOD_COLLECTION'])
+        dc = DataCollection.deserialize(input_dict_['DATA_COLLECTION'])
+        # find modelbuilder
+        func = ModelBuilderRegistry().get(model_type)
+        return func(value_date, dc, bmc)
 
 class YieldCurveModelComponent(ModelComponent):
 
@@ -80,18 +108,9 @@ class YieldCurveModelComponent(ModelComponent):
         else:
             gradient_vector[:] = grad
 
-    # def forward_rate(self, effective_date : Date, termination_date : Date):
-    #     day_counter : ql.DayCounter = self.component_identifier.dayCounter()
-    #     tau = day_counter.yearFraction(effective_date, termination_date)
-    #     time_to_effective_date = accrued(self.value_date, effective_date)
-    #     time_to_termination_date = accrued(self.value_date, termination_date)
-    #     exponent = self.state_data_interpolator.integrate(
-    #         time_to_effective_date,
-    #         time_to_termination_date
-    #     )
-    #     forward_rate = 1. / tau * (np.exp(exponent) - 1)
-
     @property
     def state_data_interpolator(self) -> Interpolator1D:
         return self.interpolator_
     
+### registry
+ModelDeserializerRegistry().register(YieldCurve._model_type.to_string(), YieldCurve.deserialize)

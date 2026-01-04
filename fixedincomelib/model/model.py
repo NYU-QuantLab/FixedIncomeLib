@@ -3,12 +3,32 @@ import pandas as pd
 import datetime as dt
 import QuantLib as ql
 from enum import Enum
-from typing import Any, Optional, Dict
-from abc import ABCMeta, abstractmethod
+from typing import Any, Dict
+from abc import ABCMeta, abstractclassmethod
 from fixedincomelib.date import *
 from fixedincomelib.data import *
 from fixedincomelib.product import *
 from fixedincomelib.model.build_method import *
+
+### registry for deserialization
+class ModelDeserializerRegistry(Registry):
+    
+    def __new__(cls) -> Self:
+        return super().__new__(cls, '', cls.__name__)
+
+    def register(self, key : Any, value : Any) -> None:
+        super().register(key, value)
+        self._map[key] = value
+
+### registry for model builder
+class ModelBuilderRegistry(Registry):
+    
+    def __new__(cls) -> Self:
+        return super().__new__(cls, '', cls.__name__)
+
+    def register(self, key : Any, value : Any) -> None:
+        super().register(key, value)
+        self._map[key] = value
 
 ### restrict admissible model sets
 class ModelType(Enum):
@@ -93,7 +113,7 @@ class Model(metaclass=ABCMeta):
         self.model_jacobian_ : np.ndarray = np.asarray([])
 
     @property    
-    def value_date(self):
+    def value_date(self) -> Date:
         return self.value_date_
     
     @property
@@ -128,6 +148,15 @@ class Model(metaclass=ABCMeta):
     def sub_model(self) -> 'Model':
         return self.sub_model_
 
+    @abstractmethod
+    def serialize(self) -> dict:
+        pass
+
+    @abstractclassmethod
+    def deserialize(cls, input_dict : dict) -> 'Model':
+        pass
+
+
     def resize_gradient(self, gradient: List[np.ndarray]):
         if len(gradient) != self.num_components:
             gradient[:] = [np.array([]) for _ in range(self.num_components)]
@@ -135,7 +164,6 @@ class Model(metaclass=ABCMeta):
         for i in range(self.num_components):
             if len(gradient[i]) != self.num_sub_components[i]:
                 gradient[i] = np.zeros(self.num_sub_components[i])
-
 
     def set_sub_model(self, model : 'Model') -> None:
         self.sub_model_ = model

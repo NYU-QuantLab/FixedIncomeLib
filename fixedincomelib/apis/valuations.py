@@ -1,6 +1,7 @@
 import pickle
 from typing import List
 from fixedincomelib.valuation import *
+from fixedincomelib.valuation.valuation_engine import ValuationRequest
 from fixedincomelib.yield_curve import *
 
 
@@ -81,3 +82,18 @@ def qfValueIndexForwardGradient(
     
     engine.calculate_value()
     engine.calculate_risk(gradient)
+
+
+### valuation engine product
+
+def qfCreateValueReport(
+    model : Model, 
+    product : Product,
+    valuation_parameters_collection: ValuationParametersCollection,
+    request : str):
+
+    this_report = create_value_report(model, product, valuation_parameters_collection, ValuationRequest.from_string(request))
+    # TODO implement display report
+
+    return this_report
+    

@@ -5,21 +5,21 @@ import numpy as np
 from fixedincomelib.model import (Model)
 from fixedincomelib.product import (Product)
 from fixedincomelib.valuation.valuation_parameters import ValuationParametersCollection
-from fixedincomelib.valuation.report import PVCashReport
+from fixedincomelib.valuation.report import CashflowsReport, PVCashReport
 
 ### requests (probably will move to somewhere else)
 class ValuationRequest(Enum):
     
-    PV_DETAILED = 'PVDetailed'
-    FIRST_ORDER_RISK = 'FirstOrderRisk'
-    CASHFLOWS_REPORT = 'CashflowsReport'
+    PV_DETAILED = 'pvdetailed'
+    FIRST_ORDER_RISK = 'firstorderrisk'
+    CASHFLOWS_REPORT = 'cashflowsreport'
 
     @classmethod
     def from_string(cls, value: str) -> 'ValuationRequest':
         if not isinstance(value, str):
             raise TypeError("value must be a string")
         try:
-            return cls(value.upper())
+            return cls(value.lower())
         except ValueError:
             raise ValueError(f"Invalid token: {value}")
 
@@ -54,16 +54,16 @@ class ValuationEngineProduct(ABC):
         return
 
     @abstractmethod
-    def create_cash_flows_report(self):
+    def create_cash_flows_report(self) -> CashflowsReport:
         pass
 
     @abstractmethod
-    def get_value(self, report : PVCashReport):
+    def get_value_and_cash(self) -> PVCashReport:
         pass
     
-    @abstractmethod
-    def get_cash(self, report : PVCashReport):
-        pass
+    @classmethod
+    def val_engine_type(cls) -> str:
+        return cls.__name__
 
     # optional
     def par_rate_or_spread(self):
