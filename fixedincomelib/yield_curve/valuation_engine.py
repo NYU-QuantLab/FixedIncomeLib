@@ -98,21 +98,14 @@ class ValuationEngineProductRfrFuture(ValuationEngineProduct):
                  request : ValuationRequest):
         super().__init__(model, valuation_parameters_collection, product, request)
         # get info from product
-        self.currency_ = product.currency_
-        self.effective_date_ = product.effective_date_
-        self.termination_date_ = product.termination_date_
-        self.strike_ = product.strike_
-        self.sign_ = 1. if product.long_or_short_ == LongOrShort.LONG else -1.
-        self.notional_ = product.notional_
+        self.currency_ = product.currency
+        self.effective_date_ = product.effective_date
+        self.termination_date_ = product.termination_date
+        self.strike_ = product.strike
+        self.sign_ = 1. if product.long_or_short == LongOrShort.LONG else -1.
+        self.notional_ = product.notional
         self.expiry_date_ = self.effective_date_
-        self.on_index_ = product.on_index_     
-
-        fixing_mgr = IndexFixingsManager()
-        if not fixing_mgr.exists('SOFR-1B'):
-            try:
-                fixing_mgr.register('SOFR-1B', 'fixedincomelib/fixings/sofr-1b.csv')
-            except Exception:
-                pass
+        self.on_index_ = product.on_index
 
         # resolve valuation parameters
         self.vpc_ : ValuationParametersCollection = valuation_parameters_collection
@@ -120,18 +113,8 @@ class ValuationEngineProductRfrFuture(ValuationEngineProduct):
         self.funding_vp_ : FundingIndexParameter = self.vpc_.get_vp_from_build_method_collection(FundingIndexParameter._vp_type)
         self.funding_index_ = self.funding_vp_.get_funding_index(self.currency_)
 
-        # compute forward
         self.index_engine_ = None
-
-        self.df_ = 1.0
-        self.forward_rate_ = 0.0
-    
-    @classmethod
-    def val_engine_type(cls) -> str:
-        return cls.__name__
-    
-    def _get_index_engine(self):
-        if self.index_engine_ is None:
+        if self.value_date <= self.expiry_date_:
             tortd = TermOrTerminationDate(self.termination_date_.ISO())
             self.index_engine_ = ValuationEngineAnalyticsOvernightIndex(
                 self.model_,
@@ -141,7 +124,13 @@ class ValuationEngineProductRfrFuture(ValuationEngineProduct):
                 tortd,
                 CompoundingMethod.COMPOUND
             )
-        return self.index_engine_
+
+        self.df_ = 1.0
+        self.forward_rate_ = 0.0
+    
+    @classmethod
+    def val_engine_type(cls) -> str:
+        return cls.__name__
 
     def calculate_value(self):
 
@@ -149,9 +138,8 @@ class ValuationEngineProductRfrFuture(ValuationEngineProduct):
         self.forward_rate_ = 0.
 
         if self.value_date <= self.expiry_date_:
-            eng = self._get_index_engine()
-            eng.calculate_value()
-            self.forward_rate_ = eng.value()
+            self.index_engine_.calculate_value()
+            self.forward_rate_ = self.index_engine_.value()
 
             payoff = self.sign_ * self.notional_ * (self.forward_rate_ - self.strike_)
 
@@ -169,16 +157,16 @@ class ValuationEngineProductRfrFuture(ValuationEngineProduct):
         self.model_.resize_gradient(local_grad)
 
         if self.value_date < self.expiry_date_:
-            eng = self._get_index_engine()
-            eng.calculate_value()
-            fwd = eng.value()
+            if self.forward_rate_ == 0.0:
+                self.index_engine_.calculate_value()
+                self.forward_rate_ = self.index_engine_.value()
 
-            payoff = self.sign_ * self.notional_ * (fwd - self.strike_)
+            payoff = self.sign_ * self.notional_ * (self.forward_rate_ - self.strike_)
 
             funding_model: YieldCurve = self.model_
             df = funding_model.discount_factor(self.funding_index_, self.expiry_date_)
 
-            eng.calculate_risk(
+            self.index_engine_.calculate_risk(
                 local_grad,
                 scaler * self.sign_ * self.notional_ * df,
                 True
@@ -209,8 +197,14 @@ class ValuationEngineProductRfrFuture(ValuationEngineProduct):
             self.sign_,
             self.expiry_date_,
             self.value_ / self.df_,
-            self.value_)
+            self.value_,
+            fixing_date=self.expiry_date_,
+            start_date=self.effective_date_,
+            end_date=self.termination_date_,
+            index_or_fixed=self.on_index_.name(),
+            index_value=self.forward_rate_)
         return this_cf
+    
 
     def get_value_and_cash(self) -> PVCashReport:
         report = PVCashReport(self.currency_) # TODO: implement currency method for yield curve model

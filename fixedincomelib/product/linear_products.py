@@ -312,6 +312,10 @@ class ProductRFRFuture(Product):
         return self.contractual_notional_
     
     @property
+    def notional(self) -> float:
+        return self.notional_
+    
+    @property
     def basis_point(self) -> float:
         return self.basis_point_
     
@@ -319,6 +323,14 @@ class ProductRFRFuture(Product):
     def on_index(self) -> ql.QuantLib.OvernightIndex:
         return self.on_index_
     
+    @property
+    def currency(self):
+        return self.currency_
+    
+    @property
+    def long_or_short(self):
+        return self.long_or_short_
+
     @property
     def amount(self) -> float:
         return self.amount_
