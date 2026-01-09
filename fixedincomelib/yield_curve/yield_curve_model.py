@@ -104,7 +104,8 @@ class YieldCurveModelComponent(ModelComponent):
         # finalize
         if accumulate:
             assert len(gradient_vector) == len(grad)
-            gradient_vector += grad
+            for i in range(len(gradient_vector)):
+                gradient_vector[i] += grad[i]
         else:
             gradient_vector[:] = grad
 

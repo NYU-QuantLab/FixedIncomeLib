@@ -13,6 +13,7 @@ class ValuationRequest(Enum):
     PV_DETAILED = 'pvdetailed'
     FIRST_ORDER_RISK = 'firstorderrisk'
     CASHFLOWS_REPORT = 'cashflowsreport'
+    PAR_RATE_OR_SPREAD = 'parrateorspread'
 
     @classmethod
     def from_string(cls, value: str) -> 'ValuationRequest':
@@ -66,8 +67,8 @@ class ValuationEngineProduct(ABC):
         return cls.__name__
 
     # optional
-    def par_rate_or_spread(self):
-        pass
+    def par_rate_or_spread(self) -> float:
+        raise Exception('This product does not support par rate or spread calculation.')
 
 class ValuationEngineAnalytics(ABC):
 

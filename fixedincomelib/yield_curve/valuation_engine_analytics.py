@@ -136,7 +136,8 @@ class ValuationEngineAnalyticsOvernightIndex(ValuationEngineAnalytics):
     
         self.model_.resize_gradient(gradient)
         if accumulate:
-            gradient += local_grad
+            for i in range(len(gradient)):
+                gradient[i] += local_grad[i]
         else:
             gradient[:] = local_grad
 

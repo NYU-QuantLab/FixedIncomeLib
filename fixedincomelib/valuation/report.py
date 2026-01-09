@@ -69,6 +69,7 @@ class CFReportColumns(Enum):
     PAY_OR_RECEIVE = 'PAY_OR_RECEIVE' # pay : -1 , receive : 1
     FORECASTED_AMOUNT = 'FORECASTED_AMOUNT'
     PV = 'PV'
+    DF = 'DISCOUNG FACTOR'
 
     @classmethod
     def from_string(cls, value: str) -> 'CFReportColumns':
@@ -97,7 +98,9 @@ class CashflowsReport:
             CFReportColumns.NOTIONAL.to_string(),
             CFReportColumns.PAY_DATE.to_string(),
             CFReportColumns.FORECASTED_AMOUNT.to_string(),
-            CFReportColumns.PV.to_string()]
+            CFReportColumns.PV.to_string(),
+            CFReportColumns.DF.to_string()
+            ]
         
     def add_row(self,
                 leg_id : int,
@@ -108,6 +111,7 @@ class CashflowsReport:
                 pay_date : Date,
                 forecasted_amount : float,
                 pv : float,
+                df : float,
                 fixing_date : Optional[Date]=None,
                 start_date : Optional[Date]=None,
                 end_date :  Optional[Date]=None,
@@ -131,7 +135,8 @@ class CashflowsReport:
             notional,
             pay_date,
             forecasted_amount,
-            pv]
+            pv,
+            df]
 
         # process optional field
         if len(self.content_) == 0:

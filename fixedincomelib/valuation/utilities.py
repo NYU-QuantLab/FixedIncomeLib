@@ -25,6 +25,8 @@ def create_value_report(
         return risk_calculation(engine)
     elif request == ValuationRequest.CASHFLOWS_REPORT:
         return engine.create_cash_flows_report()
+    elif request == ValuationRequest.PAR_RATE_OR_SPREAD:
+        return engine.par_rate_or_spread()
     else:
         raise Exception(f'Request is not currently supported.')
 

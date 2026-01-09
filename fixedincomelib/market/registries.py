@@ -89,7 +89,7 @@ class IndexFixingsManager(Registry):
         if date in this_map:
             return this_map[date]
         else:
-            raise Exception(f'Cannot find {index} for date ...')
+            raise Exception(f'Cannot find {index} for date {date.ISO()}')
         
     def remove_fixing(self, index : str, date : Optional[Date]=None):
         if date is None:
