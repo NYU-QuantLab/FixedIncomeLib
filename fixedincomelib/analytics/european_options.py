@@ -37,6 +37,7 @@ class SimpleMetrics(Enum):
     VEGA = 'vega'
     TTE_RISK = 'tte_risk'
     STRIKE_RISK = 'strike_risk'
+    STRIKE_RISK_2 = 'strike_risk_2'
     THETA = 'theta'
     ## vol sensitivities
     # nv = f(ln_vol, f, k, tte)

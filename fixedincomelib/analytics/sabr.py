@@ -1,12 +1,23 @@
 from enum import Enum
 import numpy as np
-from typing import Optional, Dict, Any, Tuple
-from fixedincomelib.analytics.european_options import SimpleMetrics, EuropeanOptionAnalytics
+from typing import Optional, Dict, Any, Tuple, List
+from fixedincomelib.analytics.european_options import CallOrPut, SimpleMetrics, EuropeanOptionAnalytics
 
 class SabrMetircs(Enum):
 
     # parameters
     ALPHA = 'alpha'
+    BETA = 'beta'
+    NU = 'nu'
+    RHO = 'rho'
+
+    # risk
+    DALPHA = 'dalpha'
+    DLNSIGMA = 'dlnsigma'
+    DNORMALSIGMA = 'dnormalsigma'
+    DBETA = 'dbeta'
+    DRHO = 'drho'
+    DNU = 'dnu'
     
     # (alpha, beta, nu, rho, forward, strike, tte) => \sigma_k
     D_LN_SIGMA_D_FORWARD = 'd_ln_sigma_d_forward'
@@ -47,6 +58,10 @@ class SabrMetircs(Enum):
         return self.value
 
 class SABRAnalytics:
+
+    EPSILON = 1e-6
+
+    ### parameters conversion
 
     @staticmethod
     def lognormal_vol_from_alpha(
@@ -142,7 +157,7 @@ class SABRAnalytics:
             raise RuntimeError("alpha_from_atm_lognormal_sigma: Newton did not converge")
 
         res: Dict[SabrMetircs, float] = {SabrMetircs.ALPHA: alpha}
-
+        
         if not calc_risk:
             return res
 
@@ -279,6 +294,219 @@ class SABRAnalytics:
                 that_res[SimpleMetrics.D_N_VOL_D_TTE]
             
         return final_res
+
+    ### option pricing
+
+    @staticmethod
+    def european_option_alpha(
+        forward: float,
+        strike: float,
+        time_to_expiry: float,
+        opt_type : CallOrPut,
+        alpha: float,
+        beta: float,
+        rho: float,
+        nu: float,
+        shift : Optional[float]=0.,
+        calc_risk: Optional[bool]=False):
+
+        ### pv
+        ln_sigma_and_sensitivities = SABRAnalytics.lognormal_vol_from_alpha(
+            forward, strike, time_to_expiry, alpha, beta, rho, nu, shift, calc_risk)
+        ln_iv = ln_sigma_and_sensitivities[SimpleMetrics.IMPLIED_LOG_NORMAL_VOL]
+        value_and_sensitivities = EuropeanOptionAnalytics.european_option_log_normal( \
+            forward + shift, strike + shift, time_to_expiry, ln_iv, opt_type, calc_risk)
+
+        ### risk
+        if calc_risk:
+            ## first order risks
+            dvdsigma = value_and_sensitivities[SimpleMetrics.VEGA]
+            value_and_sensitivities.pop(SimpleMetrics.VEGA)
+            # delta
+            value_and_sensitivities[SimpleMetrics.DELTA] += \
+                dvdsigma * ln_sigma_and_sensitivities[SabrMetircs.D_LN_SIGMA_D_FORWARD]
+            # theta
+            value_and_sensitivities[SimpleMetrics.THETA] -= \
+                dvdsigma * ln_sigma_and_sensitivities[SabrMetircs.D_LN_SIGMA_D_TTE]
+            # sabr alpha/beta/nu/rho
+            for key, risk in [
+                (SabrMetircs.DALPHA, SabrMetircs.D_LN_SIGMA_D_ALPHA),
+                (SabrMetircs.DBETA, SabrMetircs.D_LN_SIGMA_D_BETA),
+                (SabrMetircs.DRHO, SabrMetircs.D_LN_SIGMA_D_RHO),
+                (SabrMetircs.DNU, SabrMetircs.D_LN_SIGMA_D_NU)]:
+                value_and_sensitivities[key] = dvdsigma * ln_sigma_and_sensitivities[risk]
+            # strike
+            value_and_sensitivities[SimpleMetrics.STRIKE_RISK] += \
+                dvdsigma * ln_sigma_and_sensitivities[SabrMetircs.D_LN_SIGMA_D_STRIKE]
+            ## second order risk (bump reval)
+            v_base = value_and_sensitivities[SimpleMetrics.PV]
+            # strike
+            res_up = SABRAnalytics.lognormal_vol_from_alpha( \
+                forward, strike + SABRAnalytics.EPSILON, time_to_expiry, alpha, beta, rho, nu, shift)
+            vol_up = res_up[SimpleMetrics.IMPLIED_LOG_NORMAL_VOL]
+            v_up = EuropeanOptionAnalytics.european_option_log_normal(\
+                forward + shift, strike + shift + SABRAnalytics.EPSILON, time_to_expiry, vol_up, opt_type)[SimpleMetrics.PV]
+            
+            res_dn = SABRAnalytics.lognormal_vol_from_alpha( \
+                forward, strike - SABRAnalytics.EPSILON, time_to_expiry, alpha, beta, rho, nu, shift)
+            vol_dn = res_dn[SimpleMetrics.IMPLIED_LOG_NORMAL_VOL]
+            v_dn = EuropeanOptionAnalytics.european_option_log_normal(\
+                forward + shift, strike + shift - SABRAnalytics.EPSILON, time_to_expiry, vol_dn, opt_type)[SimpleMetrics.PV]
+            value_and_sensitivities[SimpleMetrics.STRIKE_RISK_2] = (v_up - 2 * v_base + v_dn) / (SABRAnalytics.EPSILON**2)
+            
+            # gamma
+            res_up = SABRAnalytics.lognormal_vol_from_alpha( \
+                forward + SABRAnalytics.EPSILON, strike, time_to_expiry, alpha, beta, rho, nu, shift)
+            vol_up = res_up[SimpleMetrics.IMPLIED_LOG_NORMAL_VOL]
+            v_up = EuropeanOptionAnalytics.european_option_log_normal(\
+                forward + shift + SABRAnalytics.EPSILON, strike + shift, time_to_expiry, vol_up, opt_type)[SimpleMetrics.PV]
+            res_dn = SABRAnalytics.lognormal_vol_from_alpha( \
+                forward - SABRAnalytics.EPSILON, strike, time_to_expiry, alpha, beta, rho, nu, shift)
+            vol_dn = res_dn[SimpleMetrics.IMPLIED_LOG_NORMAL_VOL]
+            v_dn = EuropeanOptionAnalytics.european_option_log_normal(\
+                forward + shift - SABRAnalytics.EPSILON, strike + shift, time_to_expiry, vol_dn, opt_type)[SimpleMetrics.PV]
+            value_and_sensitivities[SimpleMetrics.GAMMA] = (v_up - 2 * v_base + v_dn) / (SABRAnalytics.EPSILON**2)
+
+        return value_and_sensitivities
+    
+    def european_option_ln_sigma(
+        forward: float,
+        strike: float,
+        time_to_expiry: float,
+        opt_type : CallOrPut,
+        ln_sigma_atm: float,
+        beta: float,
+        rho: float,
+        nu: float,
+        shift : Optional[float]=0.,
+        calc_risk: Optional[bool]=False):
+
+        ### pv
+        alpha_and_sensitivities = SABRAnalytics.alpha_from_atm_lognormal_sigma( \
+            forward, time_to_expiry, ln_sigma_atm, beta, rho, nu, shift, calc_risk)
+        alpha = alpha_and_sensitivities[SabrMetircs.ALPHA]
+        value_and_sensitivities = SABRAnalytics.european_option_alpha(
+            forward, strike, time_to_expiry, opt_type, alpha, beta, rho, nu, shift, calc_risk)
+
+        ### risk
+        if calc_risk:
+            ## first order risks
+            dvdalpha = value_and_sensitivities[SabrMetircs.DALPHA]
+            value_and_sensitivities.pop(SabrMetircs.DALPHA)
+            # delta
+            value_and_sensitivities[SimpleMetrics.DELTA] += \
+                dvdalpha * alpha_and_sensitivities[SabrMetircs.D_ALPHA_D_FORWARD]
+            # theta
+            value_and_sensitivities[SimpleMetrics.THETA] -= \
+                dvdalpha * alpha_and_sensitivities[SabrMetircs.D_ALPHA_D_TTE]
+            # ln_sigma
+            value_and_sensitivities[SabrMetircs.DLNSIGMA] = \
+                dvdalpha * alpha_and_sensitivities[SabrMetircs.D_ALPHA_D_LN_SIGMA_ATM]
+            # sabr beta/rho/nu
+            for key, risk in [
+                (SabrMetircs.DBETA, SabrMetircs.D_ALPHA_D_BETA),
+                (SabrMetircs.DRHO, SabrMetircs.D_ALPHA_D_RHO),
+                (SabrMetircs.DNU, SabrMetircs.D_ALPHA_D_NU)]:
+                value_and_sensitivities[key] += dvdalpha * alpha_and_sensitivities[risk]
+            ## second order risk (bump reval)
+            v_base = value_and_sensitivities[SimpleMetrics.PV]
+            
+            # gamma
+            res_up = SABRAnalytics.alpha_from_atm_lognormal_sigma( \
+                forward + SABRAnalytics.EPSILON, time_to_expiry, ln_sigma_atm, beta, rho, nu, shift)
+            alpha_up = res_up[SabrMetircs.ALPHA]
+            v_up = SABRAnalytics.european_option_alpha( \
+                forward + SABRAnalytics.EPSILON, strike, time_to_expiry, opt_type, alpha_up, beta, rho, nu, shift)[SimpleMetrics.PV]
+            res_dn = SABRAnalytics.alpha_from_atm_lognormal_sigma( \
+                forward - SABRAnalytics.EPSILON, time_to_expiry, ln_sigma_atm, beta, rho, nu, shift)
+            alpha_dn = res_dn[SabrMetircs.ALPHA]
+            v_dn = SABRAnalytics.european_option_alpha( \
+                forward - SABRAnalytics.EPSILON, strike, time_to_expiry, opt_type, alpha_dn, beta, rho, nu, shift)[SimpleMetrics.PV]
+            value_and_sensitivities[SimpleMetrics.GAMMA] = (v_up - 2 * v_base + v_dn) / (SABRAnalytics.EPSILON**2)
+
+        return value_and_sensitivities
+    
+    def european_option_normal_sigma(
+        forward: float,
+        strike: float,
+        time_to_expiry: float,
+        opt_type : CallOrPut,
+        normal_sigma_atm: float,
+        beta: float,
+        rho: float,
+        nu: float,
+        shift : Optional[float]=0.,
+        calc_risk: Optional[bool]=False):
+
+        ### pv
+        alpha_and_sensitivities = SABRAnalytics.alpha_from_atm_normal_sigma( \
+            forward, time_to_expiry, normal_sigma_atm, beta, rho, nu, shift, calc_risk)
+        alpha = alpha_and_sensitivities[SabrMetircs.ALPHA]
+        value_and_sensitivities = SABRAnalytics.european_option_alpha(
+            forward, strike, time_to_expiry, opt_type, alpha, beta, rho, nu, shift, calc_risk)
+
+        ### risk
+        if calc_risk:
+            ## first order risks
+            dvdalpha = value_and_sensitivities[SabrMetircs.DALPHA]
+            value_and_sensitivities.pop(SabrMetircs.DALPHA)
+            # delta
+            value_and_sensitivities[SimpleMetrics.DELTA] += \
+                dvdalpha * alpha_and_sensitivities[SabrMetircs.D_ALPHA_D_FORWARD]
+            # theta
+            value_and_sensitivities[SimpleMetrics.THETA] -= \
+                dvdalpha * alpha_and_sensitivities[SabrMetircs.D_ALPHA_D_TTE]
+            # normal_sigma
+            value_and_sensitivities[SabrMetircs.DNORMALSIGMA] = \
+                dvdalpha * alpha_and_sensitivities[SabrMetircs.D_ALPHA_D_NORMAL_SIGMA_ATM]
+            # sabr beta/rho/nu
+            for key, risk in [
+                (SabrMetircs.DBETA, SabrMetircs.D_ALPHA_D_BETA),
+                (SabrMetircs.DRHO, SabrMetircs.D_ALPHA_D_RHO),
+                (SabrMetircs.DNU, SabrMetircs.D_ALPHA_D_NU)]:
+                value_and_sensitivities[key] += dvdalpha * alpha_and_sensitivities[risk]
+            ## second order risk (bump reval)
+            v_base = value_and_sensitivities[SimpleMetrics.PV]
+            
+            # gamma
+            res_up = SABRAnalytics.alpha_from_atm_normal_sigma( \
+                forward + SABRAnalytics.EPSILON, time_to_expiry, normal_sigma_atm, beta, rho, nu, shift)
+            alpha_up = res_up[SabrMetircs.ALPHA]
+            v_up = SABRAnalytics.european_option_alpha( \
+                forward + SABRAnalytics.EPSILON, strike, time_to_expiry, opt_type, alpha_up, beta, rho, nu, shift)[SimpleMetrics.PV]
+            res_dn = SABRAnalytics.alpha_from_atm_normal_sigma( \
+                forward - SABRAnalytics.EPSILON, time_to_expiry, normal_sigma_atm, beta, rho, nu, shift)
+            alpha_dn = res_dn[SabrMetircs.ALPHA]
+            v_dn = SABRAnalytics.european_option_alpha( \
+                forward - SABRAnalytics.EPSILON, strike, time_to_expiry, opt_type, alpha_dn, beta, rho, nu, shift)[SimpleMetrics.PV]
+            value_and_sensitivities[SimpleMetrics.GAMMA] = (v_up - 2 * v_base + v_dn) / (SABRAnalytics.EPSILON**2)
+
+        return value_and_sensitivities
+    
+    ### pdf and cdf
+
+    def pdf_and_cdf(
+        forward: float,
+        time_to_expiry: float,
+        alpha: float,
+        beta: float,
+        rho: float,
+        nu: float,
+        grids : List|np.ndarray,
+        shift : Optional[float]=0):
+        
+        ks, ks_shifted, cdf, pdf = [], [], [], []
+        for k in grids:
+            v = SABRAnalytics.european_option_alpha(
+                forward, k, time_to_expiry, CallOrPut.PUT, alpha, beta, rho, nu, shift, True)
+            ks.append(k)
+            ks_shifted.append(k + shift)
+            cdf.append(v[SimpleMetrics.STRIKE_RISK])
+            pdf.append(v[SimpleMetrics.STRIKE_RISK_2])
+
+        return ks, ks_shifted, cdf, pdf
+
+    ### helpers
 
     @staticmethod
     def _vol_and_risk(F, K, T, a, b, r, n, calc_risk = False, atm_log_fk_cut=1e-12) -> Tuple[float, Dict[SabrMetircs, float]]:
