@@ -136,7 +136,7 @@ class Interpolator1DPCP(Interpolator1D):
         for i in range(self.length + 1):
             interval_s, interval_e, interval_v = None, None, None
             if i == 0:
-                interval_s, interval_e = 0, self.axis1[0]
+                interval_s, interval_e = -np.inf, self.axis1[0]
                 interval_v = self.values[0]
             elif i == self.length:
                 interval_s, interval_e = self.axis1[-1], np.inf
