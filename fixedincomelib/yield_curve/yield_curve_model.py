@@ -68,16 +68,25 @@ class YieldCurveModelComponent(ModelComponent):
     def __init__(self, 
                  value_date : Date,
                  component_identifier : ql.Index,
-                 calibration_product : list[Product],
                  state_data : np.ndarray,
-                 build_method : YieldCurveBuildMethod) -> None:
+                 build_method : YieldCurveBuildMethod,
+                 calibration_product : Optional[List[Product]]=[],
+                 calibration_funding : Optional[List[Product]]=[]) -> None:
         
-        super().__init__(value_date, component_identifier, calibration_product, state_data, build_method)
+        super().__init__(value_date, component_identifier, state_data, build_method, calibration_product, calibration_funding)
         assert len(state_data) == 2
         self.num_state_data_ = len(state_data[0])
         self.interpolator_ = InterpolatorFactory.create_1d_interpolator(
             state_data[0], 
             state_data[1],
+            self.build_method.interpolation_method,
+            self.build_method.extrapolation_method)
+
+    def perturb_model_parameter(self, parameter_id : int, perturb_size : float, override_parameter : Optional[bool]=False):
+        super().perturb_model_parameter(parameter_id, perturb_size, override_parameter)
+        self.interpolator_ = InterpolatorFactory.create_1d_interpolator(
+            self.state_data[0], 
+            self.state_data[1],
             self.build_method.interpolation_method,
             self.build_method.extrapolation_method)
 

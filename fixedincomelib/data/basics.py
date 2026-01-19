@@ -20,7 +20,7 @@ class DataObject(ABC):
     _version = -1
     _data_shape = ''
 
-    def __init__(self, data_type: str, data_convention: DataConvention):
+    def __init__(self, data_type: str, data_convention: DataConvention|str):
         self.data_type_ = data_type
         self.data_convention_ = data_convention
         func = DataIdentifierRegistry().get(self.data_type_)
@@ -39,7 +39,7 @@ class DataObject(ABC):
         return self.data_type_
 
     @property
-    def data_convention(self) -> DataConvention:
+    def data_convention(self) -> DataConvention|str:
         return self.data_convention_
 
     @abstractmethod

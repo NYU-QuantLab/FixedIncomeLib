@@ -22,11 +22,9 @@ class Currency:
             self.ccy = ql.JPYCurrency()
         elif input.upper() == 'AUD':
             self.ccy = ql.AUDCurrency()
-        elif input.upper() == 'INVALID':
+        else:
             self.ccy = None
             self.is_valid_ = False
-        else:
-            raise Exception(input + ' is not current supported currency.')
 
     @property
     def value(self):

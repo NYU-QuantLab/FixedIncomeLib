@@ -1,3 +1,4 @@
+from ast import Dict
 import numpy as np
 from typing import List
 from fixedincomelib.date import *
@@ -6,12 +7,14 @@ from fixedincomelib.market import *
 from fixedincomelib.model import *
 from fixedincomelib.product import *
 from fixedincomelib.utilities import *
-from fixedincomelib.yield_curve.build_method import (YieldCurveBuildMethod)
+from fixedincomelib.valuation import *
+from fixedincomelib.valuation.valuation_engine import ValuationRequest
+from fixedincomelib.yield_curve.calibration_utils import YieldCurveCalibration
+from fixedincomelib.yield_curve.build_method import YieldCurveBuildMethod, YieldCurveBuildMethodCommon
 from fixedincomelib.yield_curve.yield_curve_model import (YieldCurve, YieldCurveModelComponent)
 
 class YieldCurveBuilder:
-
-    ### api 1
+    
     @staticmethod
     def create_model_yield_curve(
         value_date : Date,
@@ -21,11 +24,29 @@ class YieldCurveBuilder:
         # create the skelton
         model_yield_curve = YieldCurve(value_date, data_collection, build_method_collection)
 
-        # loop through build methods and build component one by one
-        build_methods = YieldCurveBuilder.\
-            sort_and_flatten_build_method_collection(build_method_collection)
-        for i in range(len(build_methods)):
-            this_bm : YieldCurveBuildMethod = build_methods[i]
+        # parse build method collection
+        build_methods_pack, residual_build_methods = YieldCurveBuilder.\
+            _sort_out_build_method_and_funding(build_method_collection, data_collection)
+
+        # components require calibration
+        components_to_be_calibrated = []
+        for _, bm_pack in build_methods_pack.items():
+            build_methods = bm_pack[YieldCurveBuildMethod._build_method_type]
+            for bm in build_methods:
+                this_bm : YieldCurveBuildMethod = bm
+                mkt_data_list = []
+                for data_type in this_bm.calibration_instruments():
+                    data_conv = this_bm[data_type]
+                    if data_conv != '':
+                        mkt_data = data_collection.get_data_from_data_collection(data_type, data_conv)
+                        mkt_data_list.append(mkt_data)
+                component = YieldCurveBuilder.prepare_calibrate_instruments( \
+                    value_date, mkt_data_list, this_bm, bm_pack[DataGeneric._data_shape])
+                model_yield_curve.set_model_component(this_bm.target_index, component)
+                components_to_be_calibrated.append([component, bm_pack[YieldCurveBuildMethodCommon._build_method_type]])
+        
+        # components does not require calibration
+        for this_bm in residual_build_methods:
             data_conv_ifr = this_bm.instantaneous_forward_rate
             if data_conv_ifr is not None:
                 state_data = data_collection.get_data_from_data_collection(
@@ -33,16 +54,11 @@ class YieldCurveBuilder:
                 component = YieldCurveBuilder.calibrate_single_component_from_state_data(
                     value_date, data_conv_ifr, state_data, this_bm)
                 model_yield_curve.set_model_component(this_bm.target_index, component)
-            else:
-                pass
-                # build_method.interpolation
-                # data_types = build_method.calibration_instruments()
-                # mkt_data = []
-                # for data_type in data_types:
-                #     data_conv = build_method[data_type]
-                #     mkt_data.append(data_collection.get_data_from_data_collection(
-                #                     data_type, data_conv))
-        
+
+        # calibration
+        for component, solver_info in components_to_be_calibrated:
+            YieldCurveBuilder.calibrate_single_component_from_mkt_data(model_yield_curve, component, solver_info)
+
         return model_yield_curve
 
     @staticmethod
@@ -73,23 +89,121 @@ class YieldCurveBuilder:
         assert np.all(np.diff(time_to_anchored_dates) >= 0)
         combined_data = np.asarray([time_to_anchored_dates, values])
 
+        return YieldCurveModelComponent(value_date, build_method.target_index, combined_data, build_method)
+
+    @staticmethod
+    def calibrate_single_component_from_mkt_data(
+        model : Model,
+        model_component : ModelComponent,
+        solver_info : YieldCurveBuildMethodCommon):
+
+        calib_prod = model_component.calibration_product
+        calib_funding = model_component.calibration_funding
+        assert len(calib_prod) == len(calib_funding)
+        for id, (prod, funding) in enumerate(zip(calib_prod, calib_funding)):
+            fi_vp = FundingIndexParameter({'Funding Index' : funding})
+            vpc = ValuationParametersCollection([fi_vp])
+            engine = ValuationEngineProductRegistry.new_valuation_engine(
+                model, 
+                prod,
+                vpc,
+                ValuationRequest.PV_DETAILED)
+            YieldCurveCalibration.calibrate_state_var(engine, model_component.component_identifier, id, solver_info)
+
+    @staticmethod
+    def prepare_calibrate_instruments( \
+        value_date : Date,
+        mkt_data_list : List[Data1D],
+        build_method : YieldCurveBuildMethod,
+        fpt : pd.DataFrame):
+        
+        dt, dconv = 'DATA TYPE', 'DATA CONVENTION'
+        ### create calibration instrument tuples, i.e., (time_to_anchored_time, product)
+        valid_count = set()      
+        calib_instrument_triplet = []
+        for data in mkt_data_list:
+            data_convention = data.data_convention
+            v = fpt[(fpt[dt].str.upper() == data.data_type.upper())&(fpt[dconv].str.upper() == data.data_convention.name.upper())]
+            assert len(v) != 0
+            funding_identifier = v['FUNDING IDENTIFIER'].values[0]
+            for axis1, value in zip(data.axis1, data.values):
+                prod : Product = ProductFactory.create_product_from_data_convention(
+                    value_date, axis1, data_convention, value)
+                tmp_acc = accrued(value_date, prod.last_date)
+                valid_count.add(tmp_acc)
+                calib_instrument_triplet.append((tmp_acc, prod, funding_identifier))
+        assert len(valid_count) == len(calib_instrument_triplet)
+        sorted_calib_instruments = sorted(calib_instrument_triplet, \
+                                          key=lambda calib_instrument_tuples: calib_instrument_tuples[0])
+        
+        ### initialize state data and calibration product
+        calib_instruments = []
+        funding_identifiers = []
+        time_to_anchored_dates = []
+        for each in sorted_calib_instruments:
+            time_to_anchored_dates.append(each[0])
+            calib_instruments.append(each[1])
+            funding_identifiers.append(each[2])
+        assert build_method.interpolation_method == InterpMethod.PIECEWISE_CONSTANT_LEFT_CONTINUOUS
+        state_data = np.asarray([time_to_anchored_dates, [0.] * len(time_to_anchored_dates)])
+
+        ### initialize model component
         return YieldCurveModelComponent(
             value_date,
-            build_method.target_index,
-            [],
-            combined_data,
-            build_method)
+            build_method.target_index,            
+            state_data,
+            build_method,
+            calib_instruments,
+            funding_identifiers)
 
     ### utils
     @staticmethod
-    def sort_and_flatten_build_method_collection(
-        build_method_collection : BuildMethodColleciton):
-        # TODO: sort out dependency
-        ordered_bm_list = []
+    def _sort_out_build_method_and_funding(
+        build_method_collection : BuildMethodColleciton,
+        data_collection : DataCollection) -> Tuple[dict, List[BuildMethod]]:
+        
+        key_common = YieldCurveBuildMethodCommon._build_method_type
+        key_others = YieldCurveBuildMethod._build_method_type
+        key_funding = DataGeneric._data_shape
+        ordered_bm_list = {} # {CURRENCY : {'COMMON' : bm , 'YIELD CURVE' : [bms], 'DATAGENERIC' : df  }}
+
+        ### identify common build methods
+        other_build_methods = []
         for _, bm in build_method_collection.items:
-            ordered_bm_list.append(bm)
-        return ordered_bm_list
-    
+            this_bm : BuildMethod = bm
+            if Currency(this_bm.target).is_valid:
+                funding_table : DataGeneric = data_collection.get_data_from_data_collection('DATA GENERIC', this_bm['FUNDING PARAMETERS'])
+                df_funding_table = funding_table.display()
+                ordered_bm_list[this_bm.target] = {key_common : this_bm, key_funding : df_funding_table}
+            else:
+                other_build_methods.append(this_bm)
+
+        ### for given a currency, sort out relevant build methods
+        residual_build_methods = []
+        for bm in other_build_methods:
+            this_bm : YieldCurveBuildMethod = bm
+            ccy_str = this_bm.target_index.currency().code()
+            if ccy_str in ordered_bm_list:
+                if key_others not in ordered_bm_list:
+                    ordered_bm_list[ccy_str][key_others] = [this_bm]
+                else:
+                    ordered_bm_list[ccy_str][key_others].append(this_bm)
+            else:
+                residual_build_methods.append(this_bm)
+        # sort our dependency
+        for ccy_str, content in ordered_bm_list.items():
+            YieldCurveBuilder._sort_out_bm_dependency(content[key_others])
+
+        ### no currency method ?        
+        YieldCurveBuilder._sort_out_bm_dependency(residual_build_methods)
+
+        return ordered_bm_list, residual_build_methods
+
+    @staticmethod
+    def _sort_out_bm_dependency(build_methods : List[BuildMethod]):
+        ### TODO: sort out dependency
+        pass
+            
 
 ### registry
 ModelBuilderRegistry().register(YieldCurve._model_type.to_string(), YieldCurveBuilder.create_model_yield_curve)

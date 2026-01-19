@@ -27,6 +27,7 @@ class BuildMethod(ABC):
             self.bm_dict = {each[0].upper() : each[1] for each in content}
         else:
             self.bm_dict = {k.upper() : v for k, v in content.items()}
+        if 'TARGET' not in self.bm_dict: self.bm_dict['TARGET'] = self.bm_target
         # validation
         valid_keys = self.get_valid_keys()
         for k, v in self.bm_dict.items():

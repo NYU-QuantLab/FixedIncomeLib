@@ -90,7 +90,6 @@ class ValuationEngineProductBulletCashflow(ValuationEngineProduct):
         report.set_cash(self.currency_, self.cash_)
         return report
 
-
 class ValuationEngineProductRfrFuture(ValuationEngineProduct):
 
     def __init__(self, 
@@ -210,13 +209,14 @@ class ValuationEngineProductRfrFuture(ValuationEngineProduct):
     def par_rate_or_spread(self) -> float:
         return self.forward_rate_
 
+
+
 ### register
 ValuationEngineProductRegistry().register((YieldCurve._model_type.to_string(), 
                                            ProductBulletCashflow._product_type,
                                            AnalyticValParam._vp_type), 
                                            ValuationEngineProductBulletCashflow)
 
-### register
 ValuationEngineProductRegistry().register((YieldCurve._model_type.to_string(), 
                                            ProductRFRFuture._product_type,
                                            AnalyticValParam._vp_type), 

@@ -3,7 +3,7 @@ import pandas as pd
 import datetime as dt
 import QuantLib as ql
 from enum import Enum
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from abc import ABCMeta, abstractclassmethod
 from fixedincomelib.date import *
 from fixedincomelib.data import *
@@ -48,23 +48,30 @@ class ModelType(Enum):
     def to_string(self) -> str:
         return self.value
 
-
 ### one model consist of multiple components
 class ModelComponent:
 
     def __init__(self, 
                  value_date : Date,
                  component_identifier : ql.Index,
-                 calibration_product : list[Product],
                  state_data : Any,
-                 build_method : BuildMethod) -> None:
+                 build_method : BuildMethod,
+                 calibration_product : List[Product],
+                 calibration_funding : List[str]) -> None:
         
         self.value_date_ = value_date
         self.component_identifier_ = component_identifier
         self.calibration_product_ = calibration_product
+        self.calibration_funding_ = calibration_funding
         self.build_method_ = build_method
         self.state_data_ = state_data
         self.num_state_data_ = -1
+
+    def perturb_model_parameter(self, parameter_id : int, perturb_size : float, override_parameter : Optional[bool]=False):
+        if override_parameter:
+            self.state_data[1][parameter_id] = perturb_size
+        else:
+            self.state_data[1][parameter_id] += perturb_size
 
     @property
     def value_date(self) -> Date:
@@ -75,9 +82,13 @@ class ModelComponent:
         return self.component_identifier_
 
     @property
-    def calibration_product(self) -> list[DataObject]:
+    def calibration_product(self) -> List[Product]:
         return self.calibration_product_
     
+    @property
+    def calibration_funding(self) -> List[str]:
+        return self.calibration_funding_
+
     @property
     def build_method(self) -> BuildMethod:
         return self.build_method_
@@ -180,4 +191,7 @@ class Model(metaclass=ABCMeta):
             return self.components_[target.name()]
         else:
             raise Exception(f'This model does not contain {target.name()} component.')
-     
+    
+    def perturb_model_parameter(self, target : ql.Index, parameter_id : int, perturb_size : float, override_parameter : Optional[bool]=False):
+        component = self.retrieve_model_component(target)
+        component.perturb_model_parameter(parameter_id, perturb_size, override_parameter)

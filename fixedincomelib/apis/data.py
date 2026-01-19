@@ -25,6 +25,11 @@ def qfCreateDataTable(data_type : str, data_conv : str, df : pd.DataFrame):
     data_conv_obj = DataConventionRegistry().get(data_conv)
     return DataTable(data_type, data_conv_obj, columns, values)
 
+def qfCreateDataGeneric(data_type : str, data_label : str, df : pd.DataFrame):
+    columns = df.columns.tolist()
+    values = df.values.tolist()    
+    return DataGeneric(data_type, data_label, columns, values)
+
 def qfWriteDataObjectToFile(data : DataObject, path : str):
     this_dict = data.serialize()
     with open(path, 'wb') as handle:

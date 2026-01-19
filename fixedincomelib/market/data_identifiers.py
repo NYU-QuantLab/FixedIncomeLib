@@ -8,16 +8,16 @@ class DataIdentifier(ABC):
 
     _data_type = ''
 
-    def __init__(self, data_convention : DataConvention) -> None:
+    def __init__(self, data_convention : DataConvention|str) -> None:
         self.data_convention_ = data_convention
-        self.data_identifier_ = (self._data_type, data_convention.name)
+        self.data_identifier_ = (self._data_type, data_convention if isinstance(data_convention, str) else data_convention.name)
     
     @property
     def data_type(self) -> str:
         return self._data_type
     
     @property
-    def data_convention(self) -> DataConvention:
+    def data_convention(self) -> DataConvention|str:
         return self.data_convention_
     
     @property
@@ -25,7 +25,8 @@ class DataIdentifier(ABC):
         return self.data_identifier_
 
     def to_string(self):
-        return f'{self.data_type}:{self.data_convention.name}'
+        name =  self.data_convention if isinstance(self.data_convention, str) else self.data_convention.name
+        return f'{self.data_type}:{name}'
     
     @abstractmethod
     def unit(self):
@@ -151,6 +152,16 @@ class DataIdentifierCapFloorSABRRho(DataIdentifier):
     def unit(self):
         return 0.01
 
+class DataIdentifierDataGeneric(DataIdentifier):
+
+    _data_type = 'Data Generic'
+
+    def __init__(self, data_label: str) -> None:
+        super().__init__(data_label)
+
+    def unit(self):
+        pass
+
 
 ### registration
 DataIdentifierRegistry().register(DataIdentifierOvernightIndexFuture._data_type.upper(), DataIdentifierOvernightIndexFuture)
@@ -165,3 +176,4 @@ DataIdentifierRegistry().register(DataIdentifierCapFloorNormalVolatility._data_t
 DataIdentifierRegistry().register(DataIdentifierCapFloorSABRBeta._data_type.upper(), DataIdentifierCapFloorSABRBeta)
 DataIdentifierRegistry().register(DataIdentifierCapFloorSABRNu._data_type.upper(), DataIdentifierCapFloorSABRNu)
 DataIdentifierRegistry().register(DataIdentifierCapFloorSABRRho._data_type.upper(), DataIdentifierCapFloorSABRRho)
+DataIdentifierRegistry().register(DataIdentifierDataGeneric._data_type.upper(), DataIdentifierDataGeneric)

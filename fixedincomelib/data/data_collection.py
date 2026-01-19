@@ -1,6 +1,7 @@
 import pandas as pd
 from typing import Dict, Tuple, List
 from fixedincomelib.data.basics import DataObject, DataObjectDeserializerRegistry
+from fixedincomelib.market import data_conventions
 from fixedincomelib.market.data_identifiers import DataIdentifier
 from fixedincomelib.market.registries import (DataConventionRegistry, DataIdentifierRegistry)
 
@@ -24,9 +25,11 @@ class DataCollection:
         return self.data_col.items()
 
     def get_data_from_data_collection(self, data_type : str, data_conv : str) -> DataObject:
-        data_conv_obj = DataConventionRegistry().get(data_conv)
         func = DataIdentifierRegistry().get(data_type)
-        di : DataIdentifier = func(data_conv_obj)
+        this_data_conv = data_conv
+        if DataConventionRegistry().exists(data_conv):
+            this_data_conv = DataConventionRegistry().get(data_conv)
+        di : DataIdentifier = func(this_data_conv)
         key =  di.to_string()
         if key not in self.data_col:
             raise Exception(f'Cannot find unique id with data type {data_type}, data convention {data_conv}.')
@@ -35,7 +38,8 @@ class DataCollection:
     def display(self):
         content = []
         for _, v in self.data_col.items():
-            content.append([v.data_shape, v.data_type, v.data_convention.name])
+            name = v.data_convention if isinstance(v.data_convention, str) else v.data_convention.name
+            content.append([v.data_shape, v.data_type, name])
         return pd.DataFrame(content, columns=['Data Shape', 'Data Type', 'Data Convention'])
     
     def serialize(self):

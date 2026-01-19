@@ -11,7 +11,7 @@ class DataTable(DataObject):
 
     def __init__(self, 
                  data_type : str, 
-                 data_conv : DataConvention, 
+                 data_conv : DataConvention|str, 
                  header: Sequence[str], 
                  content: Sequence[Sequence]):
         super().__init__(data_type, data_conv)
@@ -59,6 +59,51 @@ class DataTable(DataObject):
         assert 'VALUES' in input_dict
         values = input_dict['VALUES']
         return cls(data_type, data_conv, header, values)
+    
+class DataGeneric(DataTable):
+
+    _version = 1
+    _data_shape = 'DATAGENERIC'
+
+    def __init__(self, 
+                 data_type : str, 
+                 data_label : str, 
+                 header: Sequence[str], 
+                 content: Sequence[Sequence]):
+        super().__init__(data_type, data_label, header, content)
+        assert len(content) > 0
+        assert len(header) == len(content[0])
+        self.header_ = list(header)
+        self.values_ = list(content)
+
+    @property
+    def data_label(self):
+        return self.data_convention_
+
+    def serialize(self) -> dict:
+        content = {}
+        content['VERSION'] = self._version
+        content['DATA_SHAPE'] = self.data_shape
+        content['DATA_TYPE'] = self.data_type
+        content['DATA_LABEL'] = self.data_label
+        content['HEADER'] = self.header
+        content['VALUES'] = self.values
+        return content
+
+    @classmethod        
+    def deserialize(cls, input_dict : dict) -> "DataObject":
+        assert 'VERSION' in input_dict
+        version = input_dict['VERSION']
+        assert 'DATA_TYPE' in input_dict
+        data_type = input_dict['DATA_TYPE']
+        assert 'DATA_LABEL' in input_dict
+        data_label = input_dict['DATA_LABEL']
+        assert 'HEADER' in input_dict
+        header = input_dict['HEADER']
+        assert 'VALUES' in input_dict
+        values = input_dict['VALUES']
+        return cls(data_type, data_label, header, values)
+
 
 class Data1D(DataObject):
 
@@ -190,3 +235,4 @@ class Data2D(DataObject):
 DataObjectDeserializerRegistry().register(Data1D._data_shape, Data1D.deserialize)
 DataObjectDeserializerRegistry().register(Data2D._data_shape, Data2D.deserialize)
 DataObjectDeserializerRegistry().register(DataTable._data_shape, DataTable.deserialize)
+DataObjectDeserializerRegistry().register(DataGeneric._data_shape, DataGeneric.deserialize)

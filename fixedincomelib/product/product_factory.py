@@ -9,7 +9,7 @@ from fixedincomelib.product.utilities import (LongOrShort, PayOrReceive)
 class ProductFactory:
 
     @classmethod
-    def createProductFromDataConvention(
+    def create_product_from_data_convention(
         cls,
         value_date : Date,
         axis1: str,

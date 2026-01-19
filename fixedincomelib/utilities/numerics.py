@@ -95,75 +95,115 @@ class Interpolator1DPCP(Interpolator1D):
         assert self.extrap_method_ == ExtrapMethod.FLAT
 
     def interpolate(self, x: float) -> float:
-        if x <= self.axis1_[0]:
-            return self.values_[0]  # flat extrapolation
-        elif x >= self.axis1_[-1]:
-            return self.values_[-1]  # flat extrapolation
-        else:
-            idx = np.searchsorted(self.axis1_, x, side='right') - 1
-            return self.values_[idx]
-
-    def integrate(self, start_x: float, end_x: float) -> float:
-
-        if start_x > end_x:
-            start_x, end_x = end_x, start_x
-            sign = -1
-        else:
-            sign = 1
-
-        integral = 0.0
         
-        # Loop over all intervals including extrapolation zones
-        for i in range(self.length_):
-            interval_start = self.axis1_[i]
-            interval_end = self.axis1_[i+1] if i+1 < self.length_ else np.inf
-            
-            # For the very first interval, allow left extrapolation
-            if i == 0:
-                interval_start = -np.inf
-            
-            # Compute overlap with [start_x, end_x]
-            overlap_start = max(start_x, interval_start)
-            overlap_end = min(end_x, interval_end)
-            
-            if overlap_end > overlap_start:
-                integral += (overlap_end - overlap_start) * self.values_[i]
-
-        return sign * integral
-
-    def gradient_wrt_ordinate(self, x: float) -> np.ndarray:
-        grad = np.zeros_like(self.values_)
+        if x < self.axis1[0]:
+            # flat left extrapolation
+            return self.values[0]
+        if x >= self.axis1[-1]:
+            # flat right extrpolation
+            return self.values[-1]
         
-        if x <= self.axis1_[0]:
+        for i in range(len(self.axis1) - 1):
+            if x >= self.axis1[i] and x < self.axis1[i+1]:
+                return self.values[i+1]
+    
+    def gradient_wrt_ordinate(self, x : float):
+        
+        grad = np.zeros(self.length, dtype=float)
+
+        if x < self.axis1[0]:
+            # flat left extrapolation
             grad[0] = 1.0
-        elif x >= self.axis1_[-1]:
+            return grad
+        if x >= self.axis1[-1]:
+            # flat right extrpolation
             grad[-1] = 1.0
-        else:
-            idx = np.searchsorted(self.axis1_, x, side='right') - 1
-            grad[idx] = 1.0
+            return grad
 
+        for i in range(len(self.axis1) - 1):
+            if x >= self.axis1[i] and x < self.axis1[i+1]:
+                grad[i+1] = 1
         return grad
 
-    def gradient_of_integrated_value_wrt_ordinate(self, start_x: float, end_x: float) -> np.ndarray:
-        n = len(self.values_)
-        grad = np.zeros(n, dtype=float)
+    def integrate(self, start_x : float, end_x : float):
+        
+        if self.length == 1:
+            return (end_x - start_x) * self.values[0]
 
-        # ---- left tail: (-inf, axis1[0]] -> values[0]
-        left_overlap = min(end_x, self.axis1_[0]) - start_x
-        if left_overlap > 0:
-            grad[0] += left_overlap
+        acc = 0.
+        start_fixed = False
+        # two pointers
+        for i in range(self.length + 1):
+            interval_s, interval_e, interval_v = None, None, None
+            if i == 0:
+                interval_s, interval_e = 0, self.axis1[0]
+                interval_v = self.values[0]
+            elif i == self.length:
+                interval_s, interval_e = self.axis1[-1], np.inf
+                interval_v = self.values[-1]
+            else:
+                interval_s, interval_e = self.axis1[i-1], self.axis1[i]
+                interval_v = self.values[i]
+            # if both of them are in the same interval
+            if start_x >= interval_s and start_x < interval_e and \
+                end_x >= interval_s and end_x < interval_e:
+                acc = (end_x - start_x) * interval_v
+                break
+            # if start hits this interval
+            if not start_fixed and start_x >= interval_s and start_x < interval_e:
+                acc += (interval_e - start_x) * interval_v
+                start_fixed = True
+                continue
+            # start already fixed, end hits this interval
+            if start_fixed:
+                if end_x >= interval_s and end_x < interval_e:
+                    # if hit, wrap up
+                    acc += (end_x - interval_s) * interval_v
+                    break
+                else:
+                    #  otherwise, count in the whole interval
+                    acc += (interval_e - interval_s) * interval_v
 
-        # ---- middle buckets: (axis1[i-1], axis1[i]] -> values[i]
-        for i in range(1, n):
-            lower = max(start_x, self.axis1_[i - 1])
-            upper = min(end_x, self.axis1_[i])
-            if upper > lower:
-                grad[i] += upper - lower
+        return acc
 
-        # ---- right tail: (axis1[-1], +inf) -> values[-1]
-        right_overlap = end_x - max(start_x, self.axis1_[-1])
-        if right_overlap > 0:
-            grad[-1] += right_overlap
+    def gradient_of_integrated_value_wrt_ordinate(self, start_x : float, end_x : float):
+
+        grad = np.zeros(self.length, dtype=float)
+        
+        if self.length == 1:
+            grad[0] = end_x - start_x
+            return grad
+
+        # acc = 0.
+        start_fixed = False
+        # two pointers
+        for i in range(self.length + 1):            
+            interval_s, interval_e, interval_i = None, None, None
+            if i == 0:
+                interval_s, interval_e, interval_i = 0, self.axis1[0], 0
+            elif i == self.length:
+                interval_s, interval_e, interval_i = self.axis1[-1], np.inf, self.length - 1                 
+            else:
+                interval_s, interval_e, interval_i = self.axis1[i-1], self.axis1[i], 0
+            # if both of them are in the same interval
+            if start_x >= interval_s and start_x < interval_e and \
+                end_x >= interval_s and end_x < interval_e:
+                grad[interval_i] += (end_x - start_x)
+                break
+            # if start hits this interval
+            if not start_fixed and start_x >= interval_s and start_x < interval_e:                
+                grad[interval_i] += (interval_e - start_x)
+                start_fixed = True
+                continue
+            # start already fixed, end hits this interval
+            if start_fixed:
+                if end_x >= interval_s and end_x < interval_e:
+                    # if hit, wrap up                    
+                    grad[interval_i] += (end_x - interval_s)
+                    break
+                else:
+                    #  otherwise, count in the whole interval                    
+                    grad[interval_i] += (interval_e - interval_s)
 
         return grad
 

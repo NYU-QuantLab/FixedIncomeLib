@@ -44,6 +44,14 @@ class ValuationEngineProduct(ABC):
         self.value_ = 0.
         self.cash_ = 0.
 
+    @property
+    def model(self) -> Model:
+        return self.model_
+    
+    @property
+    def value(self) -> float:
+        return self.value_
+
     @abstractmethod
     def calculate_value(self):
         return
