@@ -38,7 +38,7 @@ class ProductFactory:
         if term_or_termnation_date is None:
             raise Exception('Term or Termination date is missing.')
         long_or_short = LongOrShort.from_string(kwargs.get('long_or_short', 'long'))
-        amount = kwargs.get('amount', data_convention.contractual_notional)
+        amount = kwargs.get('amount', 1.)
         return ProductRFRFuture(
             effective_date=term_or_effective_date.get_date(),
             term_or_termination_date=term_or_termnation_date,

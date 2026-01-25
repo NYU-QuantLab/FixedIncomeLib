@@ -184,7 +184,7 @@ class Interpolator1DPCP(Interpolator1D):
             elif i == self.length:
                 interval_s, interval_e, interval_i = self.axis1[-1], np.inf, self.length - 1                 
             else:
-                interval_s, interval_e, interval_i = self.axis1[i-1], self.axis1[i], 0
+                interval_s, interval_e, interval_i = self.axis1[i-1], self.axis1[i], i
             # if both of them are in the same interval
             if start_x >= interval_s and start_x < interval_e and \
                 end_x >= interval_s and end_x < interval_e:

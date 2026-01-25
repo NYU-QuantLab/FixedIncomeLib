@@ -1,4 +1,5 @@
 from typing import Any
+import numpy as np
 from fixedincomelib.model import *
 from fixedincomelib.product import *
 from fixedincomelib.valuation.report import PVCashReport
@@ -34,6 +35,16 @@ def create_value_report(
 def risk_calculation(engine : ValuationEngineProduct):
     gradient = []
     engine.calculate_first_order_risk(gradient, 1., False)
-    # TODO: chain model jacobian
-    return gradient # <- this will change
+    # dV/dX^M = dV/dX^I \cdot J^{-1}, where J is the model jacobian dX^M/dX^I 
+    # step 1: flatten gradient
+    gradient_flat = np.concatenate(gradient, axis=0) # dim : 1 x len(X^I)
+    # step 2: get model (lazy) jacobian
+    jacobian = engine.model.calculate_model_jacobian()
+    # step 3: inverse model jacobian (what is this algorithm ?)
+    jacobian_inv = np.linalg.inv(jacobian)
+    # step 4: final risk
+    risk = np.dot(gradient_flat, jacobian_inv)
+    # step 5: make a nice report
+    
+    return risk
 

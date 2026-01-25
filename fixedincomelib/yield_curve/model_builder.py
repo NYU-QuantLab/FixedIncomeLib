@@ -203,7 +203,7 @@ class YieldCurveBuilder:
     def _sort_out_bm_dependency(build_methods : List[BuildMethod]):
         ### TODO: sort out dependency
         pass
-            
+
 
 ### registry
 ModelBuilderRegistry().register(YieldCurve._model_type.to_string(), YieldCurveBuilder.create_model_yield_curve)

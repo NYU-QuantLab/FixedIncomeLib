@@ -1,14 +1,16 @@
 import numpy as np
 from typing import List
+from scipy.linalg import block_diag
 
-from yaml import serialize
 from fixedincomelib.date import *
 from fixedincomelib.data import *
 from fixedincomelib.market import *
 from fixedincomelib.model import *
 from fixedincomelib.product import *
 from fixedincomelib.utilities import *
+from fixedincomelib.valuation import *
 from fixedincomelib.yield_curve.build_method import YieldCurveBuildMethod
+from fixedincomelib.valuation.valuation_engine import ValuationRequest
 
 class YieldCurve(Model):
 
@@ -63,6 +65,36 @@ class YieldCurve(Model):
         func = ModelBuilderRegistry().get(model_type)
         return func(value_date, dc, bmc)
 
+    def calculate_model_jacobian(self):
+        super().calculate_model_jacobian()
+        # WARNING: WE DO NOT ALLOW A MIXTURE OF CALIBRATION INSTRUMENTS AND STATE DATA FOR NOW
+        only_state_data = False
+        jacobian_pre = [None] * self.num_components
+        for target_name, yc_component in self.components_.items():
+            index = self.component_indices[target_name]
+            calib_prod = yc_component.calibration_product
+            calib_funding = yc_component.calibration_funding
+            if len(calib_prod) == 0:
+                # no calibration, just using state data
+                # jacobian is identity
+                jacobian_pre[index] = np.diag(np.ones(yc_component.num_state_data))
+                only_state_data = True
+                continue
+            # calculate calibration instrument gradient
+            grads = []
+            for _, (prod, funding) in enumerate(zip(calib_prod, calib_funding)):
+                fi_vp = FundingIndexParameter({'Funding Index' : funding})
+                vpc = ValuationParametersCollection([fi_vp])
+                engine = ValuationEngineProductRegistry.new_valuation_engine(
+                    self, prod, vpc, ValuationRequest.PV_DETAILED)
+                engine.calculate_value()
+                grads.append(engine.grad_at_par())
+            jacobian_pre[index] = np.concatenate(grads, axis=0)
+
+        jacobian = jacobian = block_diag(*jacobian_pre) if only_state_data else np.concatenate(jacobian_pre, axis=0)
+        self.is_jacobian_calculated_ = True
+        return jacobian
+        
 class YieldCurveModelComponent(ModelComponent):
 
     def __init__(self, 
@@ -122,5 +154,9 @@ class YieldCurveModelComponent(ModelComponent):
     def state_data_interpolator(self) -> Interpolator1D:
         return self.interpolator_
     
+    @property
+    def num_state_data(self) -> int:
+        return self.num_state_data_
+
 ### registry
 ModelDeserializerRegistry().register(YieldCurve._model_type.to_string(), YieldCurve.deserialize)

@@ -5,9 +5,12 @@ import QuantLib as ql
 from enum import Enum
 from typing import Any, Dict, Optional
 from abc import ABCMeta, abstractclassmethod
+
+from sympy import false
 from fixedincomelib.date import *
 from fixedincomelib.data import *
 from fixedincomelib.product import *
+from fixedincomelib.market import IndexRegistry
 from fixedincomelib.model.build_method import *
 
 ### registry for deserialization
@@ -119,6 +122,7 @@ class Model(metaclass=ABCMeta):
         self.component_indices_ : Dict[str, int] = {}
         self.sub_model_ = None        
         # risk
+        self.is_jacobian_calculated_ = False
         self.num_components_ = 0
         self.num_sub_components_ = [] # for each component, how mnay state variables
         self.model_jacobian_ : np.ndarray = np.asarray([])
@@ -159,6 +163,10 @@ class Model(metaclass=ABCMeta):
     def sub_model(self) -> 'Model':
         return self.sub_model_
 
+    @property
+    def is_jacobian_calculated(self) -> bool:
+        return self.is_jacobian_calculated_
+
     @abstractmethod
     def serialize(self) -> dict:
         pass
@@ -195,3 +203,13 @@ class Model(metaclass=ABCMeta):
     def perturb_model_parameter(self, target : ql.Index, parameter_id : int, perturb_size : float, override_parameter : Optional[bool]=False):
         component = self.retrieve_model_component(target)
         component.perturb_model_parameter(parameter_id, perturb_size, override_parameter)
+    
+    def calculate_model_jacobian(self):
+        if self.is_jacobian_calculated:
+            return self.model_jacobian
+        
+
+
+        
+
+

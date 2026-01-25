@@ -77,6 +77,10 @@ class ValuationEngineProduct(ABC):
     # optional
     def par_rate_or_spread(self) -> float:
         raise Exception('This product does not support par rate or spread calculation.')
+    
+    # optional
+    def grad_at_par(self) -> np.ndarray:
+        pass
 
 class ValuationEngineAnalytics(ABC):
 

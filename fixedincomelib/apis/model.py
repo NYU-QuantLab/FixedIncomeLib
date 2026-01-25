@@ -79,3 +79,7 @@ def qfDiscountFactorGradient(
 
     yc_model.discount_factor_gradient_wrt_state(
         index_obj, Date(expiry_date), gradient, scaler, accmulate)
+    
+# display model jacobian
+def qfDisplayModelJacobian(model : Model):
+    return model.calculate_model_jacobian()

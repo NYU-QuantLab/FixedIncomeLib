@@ -125,7 +125,6 @@ class ValuationEngineProductRfrFuture(ValuationEngineProduct):
             CompoundingMethod.COMPOUND
         )
 
-        self.df_ = 1.0
         self.forward_rate_ = 0.0
     
     @classmethod
@@ -135,25 +134,16 @@ class ValuationEngineProductRfrFuture(ValuationEngineProduct):
     def calculate_value(self):
 
         self.dvdfwd_ = 0.
-        self.dvddf_ = 0.
-        self.payoff_ = 0.
 
         if self.value_date <= self.effective_date_:
             self.index_engine_.calculate_value()
             self.forward_rate_ = self.index_engine_.value()
             
-            self.payoff_ = self.sign_ * self.notional_ * (100. - 100. * self.forward_rate_ - self.strike_)
-
-            if self.value_date == self.effective_date_:
-                self.value_ = self.cash_ = self.payoff_
-            else:
-                funding_model: YieldCurve = self.model_
-                self.df_ = funding_model.discount_factor(self.funding_index_, self.effective_date_)
-                self.value_ = self.payoff_ * self.df_
-                # risk
-                self.dvdfwd_ = -100. * self.sign_ * self.notional_ * self.df_
-                self.dvddf_ = self.value_ / self.payoff_
-
+            # due to mtm, future does not require discounting
+            self.value_ = self.sign_ * self.notional_ * (100. - 100. * self.forward_rate_ - self.strike_)
+            # risk
+            if self.value_date != self.effective_date_:
+                self.dvdfwd_ = -100. * self.sign_ * self.notional_
     
     def calculate_first_order_risk(self, gradient=None, scaler: float = 1.0, accumulate: bool = False) -> None:
 
@@ -162,14 +152,6 @@ class ValuationEngineProductRfrFuture(ValuationEngineProduct):
 
         if self.value_date < self.effective_date_:
             self.index_engine_.calculate_risk(local_grad, scaler * self.dvdfwd_, True)
-            funding_model: YieldCurve = self.model_
-            funding_model.discount_factor_gradient_wrt_state(
-                self.funding_index_,
-                self.effective_date_,
-                local_grad,
-                scaler * self.dvddf_,
-                True
-            )
 
         self.model_.resize_gradient(gradient)
         if accumulate:
@@ -188,9 +170,9 @@ class ValuationEngineProductRfrFuture(ValuationEngineProduct):
             self.notional_,
             self.sign_,
             self.effective_date_,
-            self.payoff_,
             self.value_,
-            self.df_,
+            self.value_,
+            1.,
             fixing_date=self.termination_date_,
             start_date=self.effective_date_,
             end_date=self.termination_date_,
@@ -209,7 +191,12 @@ class ValuationEngineProductRfrFuture(ValuationEngineProduct):
     def par_rate_or_spread(self) -> float:
         return self.forward_rate_
 
-
+    def grad_at_par(self) -> np.ndarray: 
+        local_grad = []
+        self.model_.resize_gradient(local_grad)
+        if self.value_date < self.effective_date_:
+            self.index_engine_.calculate_risk(local_grad, -100., True)
+        return local_grad
 
 ### register
 ValuationEngineProductRegistry().register((YieldCurve._model_type.to_string(), 
