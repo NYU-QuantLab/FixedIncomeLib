@@ -70,6 +70,7 @@ class YieldCurveBuilder:
 
         time_to_anchored_dates = []
         values = []
+        market_data = []
         for i in range(len(state_data.axis1)):
             this_x = state_data.axis1[i]
             if TermOrTerminationDate(this_x).is_term():
@@ -84,12 +85,19 @@ class YieldCurveBuilder:
                 time = accrued(value_date, Date(this_x))
             time_to_anchored_dates.append(time)
             values.append(state_data.values[i])
+            market_data.append([
+                'INSTANTANEOUS FORWARD RATE', 
+                data_conv.conv_name, 
+                this_x, 
+                '', 
+                state_data.values[i],
+                state_data.data_identifier.unit()])
 
         # check if time instances are sorted
         assert np.all(np.diff(time_to_anchored_dates) >= 0)
         combined_data = np.asarray([time_to_anchored_dates, values])
 
-        return YieldCurveModelComponent(value_date, build_method.target_index, combined_data, build_method)
+        return YieldCurveModelComponent(value_date, build_method.target_index, combined_data, build_method, market_data=market_data)
 
     @staticmethod
     def calibrate_single_component_from_mkt_data(
@@ -120,7 +128,7 @@ class YieldCurveBuilder:
         dt, dconv = 'DATA TYPE', 'DATA CONVENTION'
         ### create calibration instrument tuples, i.e., (time_to_anchored_time, product)
         valid_count = set()      
-        calib_instrument_triplet = []
+        calib_instrument_quadruple = []
         for data in mkt_data_list:
             data_convention = data.data_convention
             v = fpt[(fpt[dt].str.upper() == data.data_type.upper())&(fpt[dconv].str.upper() == data.data_convention.name.upper())]
@@ -131,19 +139,27 @@ class YieldCurveBuilder:
                     value_date, axis1, data_convention, value)
                 tmp_acc = accrued(value_date, prod.last_date)
                 valid_count.add(tmp_acc)
-                calib_instrument_triplet.append((tmp_acc, prod, funding_identifier))
-        assert len(valid_count) == len(calib_instrument_triplet)
-        sorted_calib_instruments = sorted(calib_instrument_triplet, \
+                calib_instrument_quadruple.append((tmp_acc, prod, funding_identifier, 
+                    [data.data_type, 
+                     data.data_convention.conv_name, 
+                     axis1, 
+                     '', 
+                     value,
+                     data.data_identifier.unit()]))
+        assert len(valid_count) == len(calib_instrument_quadruple)
+        sorted_calib_instruments = sorted(calib_instrument_quadruple, \
                                           key=lambda calib_instrument_tuples: calib_instrument_tuples[0])
         
         ### initialize state data and calibration product
         calib_instruments = []
         funding_identifiers = []
         time_to_anchored_dates = []
+        sorted_mkt_data = []
         for each in sorted_calib_instruments:
             time_to_anchored_dates.append(each[0])
             calib_instruments.append(each[1])
             funding_identifiers.append(each[2])
+            sorted_mkt_data.append(each[3])
         assert build_method.interpolation_method == InterpMethod.PIECEWISE_CONSTANT_LEFT_CONTINUOUS
         state_data = np.asarray([time_to_anchored_dates, [0.] * len(time_to_anchored_dates)])
 
@@ -154,7 +170,8 @@ class YieldCurveBuilder:
             state_data,
             build_method,
             calib_instruments,
-            funding_identifiers)
+            funding_identifiers,
+            sorted_mkt_data)
 
     ### utils
     @staticmethod

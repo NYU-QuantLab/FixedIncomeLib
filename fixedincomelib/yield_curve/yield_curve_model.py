@@ -94,6 +94,14 @@ class YieldCurve(Model):
         jacobian = jacobian = block_diag(*jacobian_pre) if only_state_data else np.concatenate(jacobian_pre, axis=0)
         self.is_jacobian_calculated_ = True
         return jacobian
+    
+    def risk_postprocess(self, grad : np.ndarray):
+        frame = [None] * self.num_components
+        for target_name, yc_component in self.components_.items():
+            index = self.component_indices[target_name]
+            frame[index] = yc_component.market_data
+        frame = np.concatenate(frame, axis=0)
+        return np.concatenate([frame, grad.reshape(len(frame), 1)], axis=1)
         
 class YieldCurveModelComponent(ModelComponent):
 
@@ -103,9 +111,10 @@ class YieldCurveModelComponent(ModelComponent):
                  state_data : np.ndarray,
                  build_method : YieldCurveBuildMethod,
                  calibration_product : Optional[List[Product]]=[],
-                 calibration_funding : Optional[List[Product]]=[]) -> None:
+                 calibration_funding : Optional[List[Product]]=[],
+                 market_data : Optional[List]=[]) -> None:
         
-        super().__init__(value_date, component_identifier, state_data, build_method, calibration_product, calibration_funding)
+        super().__init__(value_date, component_identifier, state_data, build_method, calibration_product, calibration_funding, market_data)
         assert len(state_data) == 2
         self.num_state_data_ = len(state_data[0])
         self.interpolator_ = InterpolatorFactory.create_1d_interpolator(

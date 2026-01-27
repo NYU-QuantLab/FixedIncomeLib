@@ -5,8 +5,8 @@ import QuantLib as ql
 from enum import Enum
 from typing import Any, Dict, Optional
 from abc import ABCMeta, abstractclassmethod
+from fixedincomelib import market
 
-from sympy import false
 from fixedincomelib.date import *
 from fixedincomelib.data import *
 from fixedincomelib.product import *
@@ -60,7 +60,8 @@ class ModelComponent:
                  state_data : Any,
                  build_method : BuildMethod,
                  calibration_product : List[Product],
-                 calibration_funding : List[str]) -> None:
+                 calibration_funding : List[str],
+                 market_data : List) -> None:
         
         self.value_date_ = value_date
         self.component_identifier_ = component_identifier
@@ -69,6 +70,7 @@ class ModelComponent:
         self.build_method_ = build_method
         self.state_data_ = state_data
         self.num_state_data_ = -1
+        self.market_data_ = market_data
 
     def perturb_model_parameter(self, parameter_id : int, perturb_size : float, override_parameter : Optional[bool]=False):
         if override_parameter:
@@ -104,6 +106,9 @@ class ModelComponent:
     def num_state_data(self) -> int:
         return self.num_state_data_
 
+    @property
+    def market_data(self) -> Any:
+        return self.market_data_
 
 ### model interface
 class Model(metaclass=ABCMeta):
@@ -204,11 +209,14 @@ class Model(metaclass=ABCMeta):
         component = self.retrieve_model_component(target)
         component.perturb_model_parameter(parameter_id, perturb_size, override_parameter)
     
+    @abstractmethod
     def calculate_model_jacobian(self):
         if self.is_jacobian_calculated:
             return self.model_jacobian
-        
-
+    
+    @abstractmethod
+    def risk_postprocess(self, grad : np.ndarray):
+        pass
 
         
 

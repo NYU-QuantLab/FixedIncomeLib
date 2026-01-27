@@ -1,4 +1,5 @@
 from typing import List, Dict, Optional
+import numpy as np
 import pandas as pd 
 from fixedincomelib.market import *
 
@@ -49,6 +50,57 @@ class PVCashReport:
     def cash(self) -> Dict:
         return self.cash_
     
+### Risk Report
+
+class RiskReportColumns(Enum):
+    
+    DATA_TYPE = 'DATA_TYPE'
+    DATA_CONVENTION = 'DATA_CONVENTION'
+    AXIS1 = 'AXIS1'
+    AXIS2 = 'AXIS2'
+    DATA_VALUES = 'MARKET_QUOTE'
+    UNIT = 'UNIT'
+    VALUES = 'VALUES'
+
+    @classmethod
+    def from_string(cls, value: str) -> 'RiskReportColumns':
+        if not isinstance(value, str):
+            raise TypeError("value must be a string")
+        try:
+            return cls(value.upper())
+        except ValueError:
+            raise ValueError(f"Invalid token: {value}")
+
+    def to_string(self) -> str:
+        return self.value
+
+class RiskReprt:
+
+    def __init__(self, content : np.ndarray) -> None:
+        self.content_ = content
+        self.schema_ = [ \
+            RiskReportColumns.DATA_TYPE.to_string(),
+            RiskReportColumns.DATA_CONVENTION.to_string(),
+            RiskReportColumns.AXIS1.to_string(),
+            RiskReportColumns.AXIS2.to_string(),
+            RiskReportColumns.DATA_VALUES.to_string(),
+            RiskReportColumns.UNIT.to_string(),
+            RiskReportColumns.VALUES.to_string()
+        ]
+
+    def display(self):
+        df = pd.DataFrame(self.content_, columns=self.schema_)
+        df[RiskReportColumns.VALUES.to_string()] = df.apply(lambda x: \
+            float(x[RiskReportColumns.VALUES.to_string()]) * float(x[RiskReportColumns.UNIT.to_string()]), axis=1)
+        return df
+    
+    @property
+    def content(self) -> List:
+        return self.content_
+
+    @property
+    def schema(self) -> List:
+        return self.schema_
 
 ### CASHFLOWS REPORT
 
@@ -118,7 +170,6 @@ class CashflowsReport:
                 accrued : Optional[float]=None,
                 index_or_fixed : Optional[float|str]=None,
                 index_value : Optional[float]=None) -> None:
-
 
         this_row = []
         

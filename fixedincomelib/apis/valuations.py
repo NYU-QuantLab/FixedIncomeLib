@@ -93,7 +93,6 @@ def qfCreateValueReport(
     request : str):
 
     this_report = create_value_report(model, product, valuation_parameters_collection, ValuationRequest.from_string(request))
-    # TODO implement display report
 
     return this_report
     

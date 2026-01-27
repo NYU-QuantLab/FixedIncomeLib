@@ -196,7 +196,7 @@ class ValuationEngineProductRfrFuture(ValuationEngineProduct):
         self.model_.resize_gradient(local_grad)
         if self.value_date < self.effective_date_:
             self.index_engine_.calculate_risk(local_grad, -100., True)
-        return local_grad
+        return local_grad # dFutPrice / dX^I
 
 ### register
 ValuationEngineProductRegistry().register((YieldCurve._model_type.to_string(), 

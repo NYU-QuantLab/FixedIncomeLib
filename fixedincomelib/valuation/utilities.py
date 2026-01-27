@@ -2,7 +2,7 @@ from typing import Any
 import numpy as np
 from fixedincomelib.model import *
 from fixedincomelib.product import *
-from fixedincomelib.valuation.report import PVCashReport
+from fixedincomelib.valuation.report import PVCashReport, RiskReprt
 from fixedincomelib.valuation.valuation_engine_registry import *
 from fixedincomelib.valuation.valuation_parameters import ValuationParametersCollection
 
@@ -45,6 +45,6 @@ def risk_calculation(engine : ValuationEngineProduct):
     # step 4: final risk
     risk = np.dot(gradient_flat, jacobian_inv)
     # step 5: make a nice report
-    
-    return risk
+    risk_report = RiskReprt(engine.model.risk_postprocess(risk))
+    return risk_report
 
