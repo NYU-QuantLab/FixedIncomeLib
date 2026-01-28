@@ -41,11 +41,11 @@ class ValuationEngineProductBulletCashflow(ValuationEngine):
                                                                     accumulate=accumulate)
             self.firstOrderRisk_ = self.model.getGradientArray()
 
-ValuationEngineRegistry().insert(
-    YieldCurve.modelType,
-    ProductBulletCashflow.prodType,
-    ValuationEngineProductBulletCashflow
-)
+# ValuationEngineRegistry().insert(
+#     YieldCurve.modelType,
+#     ProductBulletCashflow.prodType,
+#     ValuationEngineProductBulletCashflow
+# )
 
 class ValuationEngineProductIborCashflow(ValuationEngine):
     "Returns undiscounted value"
@@ -103,11 +103,11 @@ class ValuationEngineProductIborCashflow(ValuationEngine):
                                                          accumulate = True) 
         self.firstOrderRisk_ = self.model.getGradientArray()
         
-ValuationEngineRegistry().insert(
-    YieldCurve.modelType,
-    ProductIborCashflow.prodType,
-    ValuationEngineProductIborCashflow
-)
+# ValuationEngineRegistry().insert(
+#     YieldCurve.modelType,
+#     ProductIborCashflow.prodType,
+#     ValuationEngineProductIborCashflow
+# )
 
 class ValuationEngineProductOvernightIndexCashflow(ValuationEngine):    
     "Returns undiscounted value"
@@ -221,11 +221,11 @@ class ValuationEngineProductOvernightIndexCashflow(ValuationEngine):
                                                              accumulate = True)                
         self.firstOrderRisk_ = self.model.getGradientArray()
 
-ValuationEngineRegistry().insert(
-    YieldCurve.modelType,
-    ProductOvernightIndexCashflow.prodType,
-    ValuationEngineProductOvernightIndexCashflow
-)
+# ValuationEngineRegistry().insert(
+#     YieldCurve.modelType,
+#     ProductOvernightIndexCashflow.prodType,
+#     ValuationEngineProductOvernightIndexCashflow
+# )
 
 class ValuationEngineProductFuture(ValuationEngine):
 
@@ -297,11 +297,11 @@ class ValuationEngineProductFuture(ValuationEngine):
         
         self.firstOrderRisk_ = self.model.getGradientArray()
 
-ValuationEngineRegistry().insert(
-    YieldCurve.modelType,
-    ProductFuture.prodType,
-    ValuationEngineProductFuture
-)
+# ValuationEngineRegistry().insert(
+#     YieldCurve.modelType,
+#     ProductFuture.prodType,
+#     ValuationEngineProductFuture
+# )
 
 class ValuationEngineProductRfrFuture(ValuationEngine):
 
@@ -374,11 +374,11 @@ class ValuationEngineProductRfrFuture(ValuationEngine):
         
         self.firstOrderRisk_ = self.model.getGradientArray()
 
-ValuationEngineRegistry().insert(
-    YieldCurve.modelType,
-    ProductRfrFuture.prodType,
-    ValuationEngineProductRfrFuture
-)
+# ValuationEngineRegistry().insert(
+#     YieldCurve.modelType,
+#     ProductRfrFuture.prodType,
+#     ValuationEngineProductRfrFuture
+# )
 
 class ValuationEngineProductPortfolio(ValuationEngine):
     
@@ -405,11 +405,11 @@ class ValuationEngineProductPortfolio(ValuationEngine):
 
         self.value_ = [currency, total_pv]
 
-ValuationEngineRegistry().insert(
-    YieldCurve.modelType,
-    ProductPortfolio.prodType,
-    ValuationEngineProductPortfolio
-)
+# ValuationEngineRegistry().insert(
+#     YieldCurve.modelType,
+#     ProductPortfolio.prodType,
+#     ValuationEngineProductPortfolio
+# )
 
 class ValuationEngineInterestRateStream(ValuationEngine):
     def __init__(self, model: YieldCurve, valuation_parameters: dict, product):
@@ -495,17 +495,17 @@ class ValuationEngineInterestRateStream(ValuationEngine):
         self.firstOrderRisk_ = self.model.getGradientArray()
 
 
-# register for both IBOR and OIS swaps
-ValuationEngineRegistry().insert(
-    YieldCurve.MODEL_TYPE,
-    ProductIborSwap.prodType,
-    ValuationEngineInterestRateStream
-)
-ValuationEngineRegistry().insert(
-    YieldCurve.MODEL_TYPE,
-    ProductOvernightSwap.prodType,
-    ValuationEngineInterestRateStream
-)
+# # register for both IBOR and OIS swaps
+# ValuationEngineRegistry().insert(
+#     YieldCurve.MODEL_TYPE,
+#     ProductIborSwap.prodType,
+#     ValuationEngineInterestRateStream
+# )
+# ValuationEngineRegistry().insert(
+#     YieldCurve.MODEL_TYPE,
+#     ProductOvernightSwap.prodType,
+#     ValuationEngineInterestRateStream
+# )
 
 
 

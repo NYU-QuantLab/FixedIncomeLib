@@ -284,11 +284,11 @@ class ProductOvernightCapFloor(Product):
 
     def get_fixing_schedule(self) -> list[Date]:
         mgr     = IndexManager.instance()
-        raw     = mgr.get_fixings(self.indexKey_, self.effDate_, self.endDate_)
+        raw     = mgr.get_fixings(self.indexKey_, self.effectiveDate, self.maturityDate)
         fixing_qldates = sorted(raw.keys())
-        print(f"[ProductOvernightCapFloorlet] index={self.indexKey_}  eff={self.effDate_}  end={self.endDate_}")
+        print(f"[ProductOvernightCapFloorlet] index={self.indexKey_}  eff={self.effectiveDate}  end={self.maturityDate}")
         print(f"    → raw fixings keys: {fixing_qldates!r}")
-        dates = [self.effDate_] + [Date(d) for d in fixing_qldates] + [self.endDate_]
+        dates = [self.effectiveDate] + [Date(d) for d in fixing_qldates] + [self.maturityDate]
         print(f"    → final fixing‐schedule: {dates!r}")
         return dates
 

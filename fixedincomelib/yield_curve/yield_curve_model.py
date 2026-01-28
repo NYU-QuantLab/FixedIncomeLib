@@ -23,7 +23,6 @@ class YieldCurve(Model):
         self.gradient_: np.ndarray = np.zeros(0, dtype=float)
 
         self._build_gradient_lists()
-        print(self.gradient_labels_)
     
     def _components_in_order(self) -> List[ModelComponent]:
         seen = set()
