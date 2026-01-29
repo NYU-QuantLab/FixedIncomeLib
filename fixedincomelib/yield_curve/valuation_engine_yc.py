@@ -11,10 +11,10 @@ class ValuationEngineProductBulletCashflow(ValuationEngine):
 
     def __init__(self, model : YieldCurve, valuationParameters : dict, product : ProductBulletCashflow):
             super().__init__(model, valuationParameters, product)
-            self.currency = product.currency
-            self.maturity = product.paymentDate_
-            self.buyOrSell = 1. if product.longOrShort.value == LongOrShort.LONG else -1.
-            self.notional = product.notional
+            self.currency     = product.currency
+            self.maturity     = product.paymentDate_
+            self.buyOrSell    = 1. if product.longOrShort.value == LongOrShort.LONG else -1.
+            self.notional     = product.notional
             self.fundingIndex = valuationParameters['FUNDING INDEX']
             
     def calculateValue(self):
@@ -65,11 +65,13 @@ class ValuationEngineProductIborCashflow(ValuationEngine):
         self.direction       = 1.0 if product.longOrShort.value == LongOrShort.LONG else -1.0
         self.accrualFactor   = product.accrualFactor
         self.funding_index   = valuation_parameters["FUNDING INDEX"]
-        self.payment_date    = product.paymentDate_
+        self.payment_date    = product.paymentDate
+        self.spread          = float(product.spread)
 
     def calculateValue(self):
-        forward_rate   = self.model.forward(self.index_name, self.start_date, self.end_date)
-        pnl            = forward_rate * self.accrualFactor *self.notional * self.direction
+        forward_rate   = float(self.model.forward(self.index_name, self.start_date, self.end_date))
+        coupon_rate   = forward_rate + self.spread
+        pnl            = coupon_rate * self.accrualFactor *self.notional * self.direction
         self.value_    = [self.currency.value.code(), pnl]
 
     def calculateFirstOrderRisk(self, gradient=None, scaler = 1.0, accumulate = False):
@@ -101,7 +103,7 @@ class ValuationEngineProductIborCashflow(ValuationEngine):
                                                          gradient = gradient,
                                                          scaler = forward_scaler,
                                                          accumulate = True) 
-        self.firstOrderRisk_ = self.model.getGradientArray()
+        self.firstOrderRisk_ = gradient
         
 # ValuationEngineRegistry().insert(
 #     YieldCurve.modelType,
@@ -129,9 +131,10 @@ class ValuationEngineProductOvernightIndexCashflow(ValuationEngine):
         self.valuation_date     = valuation_parameters.get("valuation_date", model.valueDate)
         self.index_manager      = IndexManager.instance()
         self.funding_index      = valuation_parameters["FUNDING INDEX"]
-        self.payment_date       = product.paymentDate_
-        self.compound_factor   = 1.0
-        self.stub_start      = self.effective_date
+        self.payment_date       = product.paymentDate
+        self.compound_factor    = 1.0
+        self.stub_start         = self.effective_date
+        self.spread             = float(product.spread)
 
     def calculateValue(self):
         component_idx        = self.model.retrieveComponent(self.index_name)
@@ -173,8 +176,11 @@ class ValuationEngineProductOvernightIndexCashflow(ValuationEngine):
             else:
                 # simple average
                 forward_accrual = forward_rate * stub_fraction
+        
+        total_year_fraction = float(day_counter.yearFraction(self.effective_date, self.termination_date))
+        spread_accrual = self.spread * total_year_fraction
 
-        total_accrual = realized_accrual + forward_accrual
+        total_accrual = realized_accrual + forward_accrual + spread_accrual
         present_value = self.notional * self.direction * total_accrual
         self.value_    = [self.currency.value.code(), present_value]
 
@@ -219,7 +225,7 @@ class ValuationEngineProductOvernightIndexCashflow(ValuationEngine):
                                                              gradient = gradient,
                                                              scaler = forward_scaler,
                                                              accumulate = True)                
-        self.firstOrderRisk_ = self.model.getGradientArray()
+        self.firstOrderRisk_ = gradient
 
 # ValuationEngineRegistry().insert(
 #     YieldCurve.modelType,

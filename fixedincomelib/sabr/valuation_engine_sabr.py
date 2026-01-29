@@ -35,7 +35,7 @@ class ValuationEngineIborCapFloorlet(ValuationEngine):
         expiry_t = accrued(self.valueDate, self.accrualStart)
         tenor_t  = accrued(self.accrualStart, self.accrualEnd)
 
-        forward_rate    = self.yieldCurve.forward(self.product.index,self.accrualStart,tenor_t)
+        forward_rate    = self.yieldCurve.forward(self.product.index,self.accrualStart,self.accrualEnd)
         discount_factor = self.yieldCurve.discountFactor(self.fundingIndex, self.accrualEnd)
 
         price = self.sabrCalc.option_price(
@@ -62,7 +62,7 @@ class ValuationEngineIborCapFloorlet(ValuationEngine):
         tenor_t  = accrued(self.accrualStart, self.accrualEnd)
         accrual_factor = accrued(self.accrualStart, self.accrualEnd)
 
-        forward_rate    = self.yieldCurve.forward(self.product.index, self.accrualStart,tenor_t)
+        forward_rate    = self.yieldCurve.forward(self.product.index, self.accrualStart,self.accrualEnd)
         discount_factor = self.yieldCurve.discountFactor(self.fundingIndex, self.accrualEnd)
 
         price = self.sabrCalc.option_price(
@@ -610,8 +610,9 @@ class ValuationEngineIborSwaption(ValuationEngine):
         ir_vp = {"FUNDING INDEX": self.swap.index}
         ir_engine = ValuationEngineRegistry().new_valuation_engine(self.yieldCurve, ir_vp, self.swap)
         ir_engine.calculateValue()
-        forward_swap_rate = ir_engine.parRateOrSpread()
-        swap_annuity      = ir_engine.annuity()
+        forward_swap_rate   = ir_engine.parRateOrSpread()
+        swap_annuity_signed = ir_engine.annuity()
+        swap_annuity        = abs(swap_annuity_signed)
 
         price = self.sabrCalc.option_price(
             index       = self.swap.index,
@@ -641,7 +642,7 @@ class ValuationEngineIborSwaption(ValuationEngine):
         ir_engine.calculateValue()
         forward_swap_rate = float(ir_engine.parRateOrSpread())
 
-        swap_annuity = float(ir_engine.annuity())
+        swap_annuity_signed = float(ir_engine.annuity())
 
         # need pv_float for dF/dCurve formula
         pv_float = float(getattr(ir_engine, "_pv_float", 0.0))
@@ -653,8 +654,11 @@ class ValuationEngineIborSwaption(ValuationEngine):
         if float(self.strikeRate) == 0.0:
             raise RuntimeError("Swap fixedRate (strikeRate) is zero; annuity is undefined.")
 
-        if swap_annuity == 0.0:
+        if swap_annuity_signed == 0.0:
             raise RuntimeError("Swap annuity is zero; cannot compute par rate sensitivity.")
+        
+        swap_annuity = abs(swap_annuity_signed)
+        sign_annuity = 1.0 if swap_annuity_signed > 0.0 else -1.0
 
         # ---------- SABR price + greeks ----------
         price = float(self.sabrCalc.option_price(
@@ -754,11 +758,12 @@ class ValuationEngineIborSwaption(ValuationEngine):
 
         # ---------- convert leg PV risks -> annuity/par-rate risks ----------
         # A = PV_fixed / (K * N)
-        dA_dCurve = g_pv_fixed / (float(self.strikeRate) * swap_notional)
+        dA_dCurve_signed = g_pv_fixed / (float(self.strikeRate) * swap_notional)
+        dA_dCurve = sign_annuity * dA_dCurve_signed
 
         # F = - PV_float / (N * A)
         # dF = -(1/(N*A)) dPV_float + (PV_float/(N*A^2)) dA
-        dF_dCurve = -(1.0 / (swap_notional * swap_annuity)) * g_pv_float + (pv_float / (swap_notional * swap_annuity * swap_annuity)) * dA_dCurve
+        dF_dCurve = -(1.0 / (swap_notional * swap_annuity_signed)) * g_pv_float + (pv_float / (swap_notional * swap_annuity_signed * swap_annuity_signed)) * dA_dCurve_signed
 
         # ---------- push curve risk into global gradient ----------
         # PV = notional * buyOrSell * ( A * price(F) )
@@ -916,7 +921,8 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
         ir_engine = ValuationEngineRegistry().new_valuation_engine(self.yieldCurve, ir_vp, self.swap)
         ir_engine.calculateValue()
         forward_swap_rate = ir_engine.parRateOrSpread()
-        swap_annuity      = ir_engine.annuity()
+        swap_annuity_signed = ir_engine.annuity()
+        swap_annuity        = abs(swap_annuity_signed)
 
         price = self.sabrCalc.option_price(
             index       = self.swap.index,
@@ -946,7 +952,7 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
         ir_engine.calculateValue()
         forward_swap_rate = float(ir_engine.parRateOrSpread())
 
-        swap_annuity = float(ir_engine.annuity())
+        swap_annuity_signed = float(ir_engine.annuity())
 
         # prefer cached leg PVs if present (from InterestRateStream)
         pv_float = float(getattr(ir_engine, "_pv_float", 0.0))
@@ -957,8 +963,11 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
             raise RuntimeError("Swap notional is zero; cannot compute swaption risk.")
         if float(self.strikeRate) == 0.0:
             raise RuntimeError("Swap fixedRate (strikeRate) is zero; annuity is undefined.")
-        if swap_annuity == 0.0:
+        if swap_annuity_signed == 0.0:
             raise RuntimeError("Swap annuity is zero; cannot compute par rate sensitivity.")
+        
+        swap_annuity = abs(swap_annuity_signed)
+        sign_annuity = 1.0 if swap_annuity_signed > 0.0 else -1.0
 
         # ---------- SABR price + greeks ----------
         price = float(self.sabrCalc.option_price(
@@ -1055,12 +1064,13 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
 
         # ---------- convert leg PV risks -> annuity/par-rate risks ----------
         # A = PV_fixed / (K * N)
-        dA_dCurve = g_pv_fixed / (float(self.strikeRate) * swap_notional)
+        dA_dCurve_signed = g_pv_fixed / (float(self.strikeRate) * swap_notional)
+        dA_dCurve = sign_annuity * dA_dCurve_signed
 
         # F = - PV_float / (N * A)
         dF_dCurve = (
-            -(1.0 / (swap_notional * swap_annuity)) * g_pv_float
-            + (pv_float / (swap_notional * swap_annuity * swap_annuity)) * dA_dCurve
+            -(1.0 / (swap_notional * swap_annuity_signed)) * g_pv_float
+            + (pv_float / (swap_notional * swap_annuity_signed * swap_annuity_signed)) * dA_dCurve_signed
         )
 
         # ---------- push curve risk into global gradient ----------

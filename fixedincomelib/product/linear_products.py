@@ -304,6 +304,7 @@ class InterestRateStream(ProductPortfolio):
         endDate: str,
         frequency: str,
         iborIndex: Optional[str]       = None,
+        iborSpread: float              = 0.0,
         overnightIndex: Optional[str]  = None,
         fixedRate: Optional[float]     = None,
         ois_compounding: str           = "COMPOUND",
@@ -326,7 +327,7 @@ class InterestRateStream(ProductPortfolio):
         prods, weights = [], []
         for row in schedule.itertuples(index=False):
             if iborIndex:
-                cf = ProductIborCashflow(Date(row.StartDate), Date(row.EndDate), iborIndex, 0.0, notional, position, Date(row.PaymentDate))
+                cf = ProductIborCashflow(Date(row.StartDate), Date(row.EndDate), iborIndex, iborSpread, notional, position, Date(row.PaymentDate))
             elif overnightIndex:
                 cf = ProductOvernightIndexCashflow(Date(row.StartDate), Date(row.EndDate), overnightIndex, ois_compounding, ois_spread, notional, position, Date(row.PaymentDate))
             else:
@@ -372,6 +373,7 @@ class ProductIborSwap(Product):
             endDate        = maturityDate,
             frequency      = frequency,
             iborIndex      = iborIndex,
+            iborSpread     = spread,
             overnightIndex = None,
             fixedRate      = None,
             notional       = notional,
@@ -473,6 +475,8 @@ class ProductOvernightSwap(Product):
             iborIndex      = None,
             overnightIndex = overnightIndex,
             fixedRate      = None,
+            ois_compounding= "COMPOUND",
+            ois_spread     = spread,  
             notional       = notional,
             position       = float_position,
             holConv        = holConv,

@@ -112,9 +112,9 @@ class YieldCurve(Model):
                 raise Exception('For OIS, one needs to specify term or termination date.')
             return self.forwardOvernightIndex(component.target, effectiveDate, termOrTerminationDate)
         else:
-            return self.forwardIborIndex(component.target, effectiveDate)
+            return self.forwardIborIndex(component.target, effectiveDate, termOrTerminationDate)
         
-    def forwardIborIndex(self, index : str, effectiveDate : Union[Date, str]):
+    def forwardIborIndex(self, index : str, effectiveDate : Union[Date, str], termOrTerminationDate : Union[str, TermOrTerminationDate, Date]=''):
         component = self.retrieveComponent(index)
         liborIndex = component.targetIndex
         tenor = liborIndex.tenor()
@@ -123,6 +123,15 @@ class YieldCurve(Model):
         effectiveDate_ = effectiveDate
         if isinstance(effectiveDate, str): effectiveDate_ = Date(effectiveDate)
         termDate = Date(cal.advance(effectiveDate_, tenor, liborIndex.businessDayConvention()))
+        if isinstance(termOrTerminationDate, (int, float)):
+            raise TypeError("Do not pass year-fractions to forwardIborIndex; pass a Period or end date.")
+        if not (isinstance(termOrTerminationDate, str) and termOrTerminationDate.strip() == ""):
+            to = termOrTerminationDate if isinstance(termOrTerminationDate, TermOrTerminationDate) else TermOrTerminationDate(termOrTerminationDate)
+            if not to.isTerm():
+                passed_end = to.getDate()
+                if passed_end != termDate:
+                    raise ValueError(f"Non-vanilla coupon detected: tenor implies {termDate}, instrument end is {passed_end}. "
+                        f"Either allow stubs or use the passed end date.")
         # accrued
         accrual = liborIndex.dayCounter().yearFraction(effectiveDate_, termDate)
         # forward rate
