@@ -111,7 +111,7 @@ class SABRCalculator:
         if forward_shifted <= 0.0 or strike_shifted <= 0.0:
             raise ValueError(f"[option_price_greeks] forward+shift and strike+shift must be > 0. Got Forward shift={forward_shifted}, Strike shift={strike_shifted}.")
 
-        # Build pricer (all methods)-
+        # Build pricer
         if self.method == "bottom-up":
             if self.corr_surf is None:
                 raise ValueError("corr_surf must be provided for bottom-up method")
@@ -306,7 +306,6 @@ class SABRCalculator:
                         f"Tstarts(min,max)=({min(Tstarts)}, {max(Tstarts)}), total={total}."
                     )
 
-                # also treat nonpositive Tstarts as an error (otherwise sqrt/time scaling is meaningless)
                 if any((not np.isfinite(T) or T <= 0.0) for T in Tstarts):
                     bad = [T for T in Tstarts if (not np.isfinite(T) or T <= 0.0)]
                     raise ValueError(
@@ -383,7 +382,7 @@ class SABRCalculator:
                 dalpha_dF = float(np.sqrt(gamma_bar) * dalpha_eff_dF)
 
         else:
-            # Plain Hagan (base params are beta_in, rho_in, nu_in)
+            # Plain Hagan
             atm_sigma_ln = float(black.normal_to_shifted_lognormal(forward, forward, shift, time_to_expiry, normal_vol))
             if atm_sigma_ln > 0.0:
                 atm_x = 0.5 * atm_sigma_ln * sqrt_time
@@ -426,28 +425,16 @@ class SABRCalculator:
         shift: float,
         decay: float = 0.0,
     ):
-        """
-        Analytic d(alpha_eff)/d(normalVol_ATM).
-
-        Returns:
-        - plain / top-down: float
-        - bottom-up: list of (seg_expiry=Tstart, seg_tenor=Ti, dAlphaStar_dNormalVolSeg)
-            (because bottom-up depends on many segment pillars, not one.)
-        """
 
         Fp = float(forward + shift)
         if Fp <= 0.0:
             return 0.0 if self.method != "bottom-up" else []
 
-        # pricer "t" used to solve alpha from ATM normal vol
         T = float(expiry + tenor) if self.method in ("top-down", "bottom-up") else float(expiry)
         if T <= 0.0:
             return 0.0 if self.method != "bottom-up" else []
 
-        # -------------------------
         # TOP-DOWN
-        # alpha_eff = c * alpha_base and c does NOT depend on normalVol (given your TimeDecay formula)
-        # -------------------------
         if self.method == "top-down":
             pr_eff = TimeDecayLognormalSABR(
                 f=forward,
@@ -499,11 +486,7 @@ class SABRCalculator:
             dalpha_base_dvn = float(dsigln_dvn / dP_dalpha)
             return float(c * dalpha_base_dvn)
 
-        # -------------------------
         # BOTTOM-UP
-        # alpha_star = sqrt(gamma_bar) * sum_i w_i * s_i * alpha_i
-        # so d(alpha_star)/d(vn_i) = sqrt(gamma_bar) * w_i * s_i * d(alpha_i)/d(vn_i)
-        # -------------------------
         if self.method == "bottom-up":
             if self.corr_surf is None:
                 raise ValueError("corr_surf must be provided for bottom-up method")
@@ -604,9 +587,7 @@ class SABRCalculator:
 
             return out
 
-        # -------------------------
         # PLAIN HAGAN
-        # -------------------------
         pr = Hagan2002LognormalSABR(
             f=forward,
             shift=shift,
@@ -655,14 +636,7 @@ class SABRCalculator:
         shift: float,
         decay: float = 0.0,
     ):
-        """
-        Analytic d(sigma_LN(strike))/d(NORMALVOL pillar).
-
-        Returns:
-          - plain/top-down: float
-          - bottom-up: list[(seg_expiry=Tstart, seg_tenor=Ti, dSigma_dNormalVol_i)]
-        """
-
+        
         beta_in = float(beta)
         rho_in  = float(rho)
         nu_in   = float(nu)
@@ -672,9 +646,6 @@ class SABRCalculator:
         if Fp <= 0.0 or Kp <= 0.0:
             return 0.0 if self.method != "bottom-up" else []
 
-        # -----------------------------
-        # Build pricer (all methods) and read EFFECTIVE params for sigma(K)
-        # -----------------------------
         if self.method == "bottom-up":
             if self.corr_surf is None:
                 raise ValueError("corr_surf must be provided for bottom-up method")
@@ -728,9 +699,7 @@ class SABRCalculator:
         if sigmaK <= 0.0:
             return 0.0 if self.method != "bottom-up" else []
 
-        # -----------------------------
-        # dsigma/dalpha (Hagan structure; SAME as your other methods)
-        # -----------------------------
+        # dsigma/dalpha
         one_minus_beta = 1.0 - beta_eff
         L = float(np.log(Fp / Kp))
 
@@ -770,7 +739,7 @@ class SABRCalculator:
             Numer = float(alpha * z * H)
             Denom = float(sqrt_fkbeta * Q * x)
 
-            dNumer_dalpha = float(alpha * z * dH_dalpha)            # since alpha*z is constant in alpha
+            dNumer_dalpha = float(alpha * z * dH_dalpha)            
             dDenom_dalpha = float(sqrt_fkbeta * Q * dx_dalpha)
 
             dsigma_dalpha = 0.0 if abs(Denom) <= 1e-18 else float(
@@ -780,9 +749,7 @@ class SABRCalculator:
             Denom = float(sqrt_fkbeta * Q)
             dsigma_dalpha = 0.0 if abs(Denom) <= 1e-18 else float((H + alpha * dH_dalpha) / Denom)
 
-        # -----------------------------
         # Chain: d sigma / d normalVol = (d sigma / d alpha) * (d alpha / d normalVol_ATM)
-        # -----------------------------
         dalpha_dvn = self.dalpha_dNormalVol_atm(
             index=index,
             expiry=expiry,
@@ -799,7 +766,7 @@ class SABRCalculator:
         if self.method != "bottom-up":
             return float(dsigma_dalpha) * float(dalpha_dvn)
 
-        # bottom-up: dalpha_dvn is list[(Tstart, Ti, dAlphaStar_dVn_i)]
+        # bottom-up
         out = []
         for Tst, Ti, dAlphaStar_dVn_i in dalpha_dvn:
             out.append((float(Tst), float(Ti), float(dsigma_dalpha) * float(dAlphaStar_dVn_i)))
@@ -821,13 +788,6 @@ class SABRCalculator:
         shift: float,
         decay: float = 0.0,
     ):
-        """
-        Analytic d(sigma_LN(strike))/d(BETA pillar).
-
-        Returns:
-          - plain/top-down: float
-          - bottom-up: list[(seg_expiry=Tstart, seg_tenor=Ti, dSigma_dBeta_i)]
-        """
 
         beta_in = float(beta)
         rho_in  = float(rho)
@@ -838,9 +798,6 @@ class SABRCalculator:
         if Fp <= 0.0 or Kp <= 0.0:
             return 0.0 if self.method != "bottom-up" else []
 
-        # -----------------------------
-        # Build pricer (all methods) and read EFFECTIVE params for sigma(K)
-        # -----------------------------
         if self.method == "bottom-up":
             if self.corr_surf is None:
                 raise ValueError("corr_surf must be provided for bottom-up method")
@@ -892,9 +849,7 @@ class SABRCalculator:
         if sigmaK <= 0.0:
             return 0.0 if self.method != "bottom-up" else []
 
-        # -----------------------------
-        # Compute dsigma/dalpha and (∂sigma/∂beta)|alpha using SAME structure as your option_price_greeks
-        # -----------------------------
+        # Compute dsigma/dalpha and dsigma/dbeta
         one_minus_beta = 1.0 - beta_eff
         L = float(np.log(Fp / Kp))
         lnFK = float(np.log(Fp * Kp))
@@ -912,7 +867,6 @@ class SABRCalculator:
         H = 1.0 + (A + B + C) * T
         Q = 1.0 + V + W
 
-        # --- pieces for dsigma/dalpha (same as you already do)
         dA_dalpha = (one_minus_beta ** 2) * alpha / (12.0 * fkbeta)
         dB_dalpha = B / alpha
         dH_dalpha = (dA_dalpha + dB_dalpha) * T
@@ -926,7 +880,7 @@ class SABRCalculator:
         dx_dz = 1.0 / sqrt_term
         dx_dalpha = dx_dz * dz_dalpha
 
-        # --- now (∂/∂beta)|alpha
+        # (d/dbeta)|alpha
         delta = 1.0 - beta_eff
         lnG = lnFK
 
@@ -947,7 +901,6 @@ class SABRCalculator:
 
         dx_dbeta = dx_dz * dz_dbeta
 
-        # sigma = Numer/Denom (same branching)
         if abs(z) > eps:
             Numer = alpha * z * H
             Denom = sqrt_fkbeta * Q * x
@@ -970,10 +923,8 @@ class SABRCalculator:
             dDenom_dbeta = dsqrt_fkbeta_dbeta * Q + sqrt_fkbeta * dQ_dbeta
             dsigma_dbeta_partial = 0.0 if abs(Denom) <= 1e-18 else float((dNumer_dbeta * Denom - Numer * dDenom_dbeta) / (Denom * Denom))
 
-        # -----------------------------
         # dalpha/dbeta from ATM constraint (holding normalVol pillar fixed)
         # Plain/top-down: scalar. Bottom-up: segment list.
-        # -----------------------------
         def _dalpha_dbeta_from_atm(alpha0: float, T0: float, vn0: float, b0: float, r0: float, nu0: float) -> float:
             # Holds sigma_ln_atm fixed (normalVol pillar separate)
             if T0 <= 0.0:
@@ -985,7 +936,6 @@ class SABRCalculator:
 
             g = float(1.0 + T0 * (nu0 ** 2) * (2.0 - 3.0 * r0 * r0) / 24.0)
 
-            # ATM polynomial: a3*alpha^3 + a2*alpha^2 + a1*alpha - sigma = 0
             a3 = float(T0 * (f_power ** 3) * (delta ** 2) / 24.0)
             a2 = float(T0 * (f_power ** 2) * (r0 * b0 * nu0) / 4.0)
             a1 = float(g * f_power)
@@ -994,22 +944,15 @@ class SABRCalculator:
             if abs(dP_dalpha) <= 1e-18:
                 return 0.0
 
-            # STABLE derivatives wrt beta (no 1/b0 or 1/(1-b0)):
-            # da3/db = T/24 * f^3 * (-2*delta + 3*delta^2*lnF)
             da3_db = float((T0 / 24.0) * (f_power ** 3) * (-2.0 * delta + 3.0 * (delta ** 2) * lnF))
-
-            # da2/db = T*(r*nu)/4 * f^2 * (1 + 2*b*lnF)
             da2_db = float((T0 * r0 * nu0 / 4.0) * (f_power ** 2) * (1.0 + 2.0 * b0 * lnF))
-
-            # da1/db = a1 * lnF
             da1_db = float(a1 * lnF)
-
             dP_dbeta = float(da3_db * (alpha0 ** 3) + da2_db * (alpha0 ** 2) + da1_db * alpha0)
 
             return float(-dP_dbeta / dP_dalpha)
 
 
-        # ---- TOP-DOWN: alpha_eff = c * alpha_base, c independent of beta in your TimeDecay formula
+        #TOP-DOWN 
         if self.method == "top-down":
             pr_base = Hagan2002LognormalSABR(
                 f=forward,
@@ -1028,7 +971,7 @@ class SABRCalculator:
 
             return float(dsigma_dbeta_partial + dsigma_dalpha * dalpha_eff_dbeta)
 
-        # ---- BOTTOM-UP: return segment contributions
+        # BOTTOM-UP
         if self.method == "bottom-up":
             from fixedincomelib.date.utilities import accrued
 
@@ -1101,20 +1044,15 @@ class SABRCalculator:
                 if alpha_i <= 0.0:
                     continue
 
-                # d(beta_star)/d(beta_i) = w
                 dBetaStar_dBeta_i = float(w)
-
-                # d(alpha_star)/d(beta_i) = sqrt(gamma_bar) * w * s * d(alpha_i)/d(beta_i)
                 dalpha_i_dbeta_i = _dalpha_dbeta_from_atm(alpha_i, Tst, vn_i, b_i, rho_i, nu_i)
                 dAlphaStar_dBeta_i = float(pref * w * s * dalpha_i_dbeta_i)
-
-                # segment contribution:
                 dSigma_dBeta_i = float(dsigma_dbeta_partial * dBetaStar_dBeta_i + dsigma_dalpha * dAlphaStar_dBeta_i)
                 out.append((Tst, Ti, dSigma_dBeta_i))
 
             return out
 
-        # ---- PLAIN
+        #PLAIN
         dalpha_dbeta = _dalpha_dbeta_from_atm(alpha, float(expiry), float(normalVol), beta_in, rho_in, nu_in)
         return float(dsigma_dbeta_partial + dsigma_dalpha * dalpha_dbeta)
 
@@ -1134,13 +1072,6 @@ class SABRCalculator:
         shift: float,
         decay: float = 0.0,
     ):
-        """
-        Analytic d(sigma_LN(strike))/d(NU pillar).
-
-        Returns:
-          - plain/top-down: float
-          - bottom-up: list[(seg_expiry=Tstart, seg_tenor=Ti, dSigma_dNu_i)]
-        """
 
         beta_in = float(beta)
         rho_in  = float(rho)
@@ -1151,9 +1082,6 @@ class SABRCalculator:
         if Fp <= 0.0 or Kp <= 0.0:
             return 0.0 if self.method != "bottom-up" else []
 
-        # -----------------------------
-        # Build pricer (all methods) and read EFFECTIVE params for sigma(K)
-        # -----------------------------
         if self.method == "bottom-up":
             if self.corr_surf is None:
                 raise ValueError("corr_surf must be provided for bottom-up method")
@@ -1205,9 +1133,7 @@ class SABRCalculator:
         if sigmaK <= 0.0:
             return 0.0 if self.method != "bottom-up" else []
 
-        # -----------------------------
-        # Compute dsigma/dalpha and (∂sigma/∂nu)|alpha using the same Numer/Denom structure
-        # -----------------------------
+        # Compute dsigma/dalpha and dsigma/dnu
         one_minus_beta = 1.0 - beta_eff
         L = float(np.log(Fp / Kp))
 
@@ -1224,7 +1150,7 @@ class SABRCalculator:
         H = 1.0 + (A + B + C) * T
         Q = 1.0 + V + W
 
-        # dsigma/dalpha pieces (same as your existing code)
+        # dsigma/dalpha
         dA_dalpha = (one_minus_beta ** 2) * alpha / (12.0 * fkbeta)
         dB_dalpha = B / alpha
         dH_dalpha = (dA_dalpha + dB_dalpha) * T
@@ -1239,11 +1165,11 @@ class SABRCalculator:
         dx_dz = 1.0 / sqrt_term
         dx_dalpha = dx_dz * dz_dalpha
 
-        # (∂/∂nu_eff)|alpha pieces
-        dz_dnu = float(sqrt_fkbeta * L / alpha)  # since z = nu_eff * (...) / alpha
-        dB_dnu = float(0.25 * rho_eff * beta_eff * alpha / sqrt_fkbeta)  # B linear in nu
-        dC_dnu = float((2.0 - 3.0 * rho_eff * rho_eff) * nu_eff / 12.0)   # C quadratic in nu
-        dH_dnu = float((dB_dnu + dC_dnu) * T)                              # only B,C depend on nu
+        # (d/dnu_eff)|alpha
+        dz_dnu = float(sqrt_fkbeta * L / alpha) 
+        dB_dnu = float(0.25 * rho_eff * beta_eff * alpha / sqrt_fkbeta)  
+        dC_dnu = float((2.0 - 3.0 * rho_eff * rho_eff) * nu_eff / 12.0)   
+        dH_dnu = float((dB_dnu + dC_dnu) * T)                             
         dx_dnu = float(dx_dz * dz_dnu)
 
         if abs(z) > eps:
@@ -1266,23 +1192,21 @@ class SABRCalculator:
 
             dsigma_dnu_partial = 0.0 if abs(Denom) <= 1e-18 else float((alpha * dH_dnu) / Denom)
 
-        # -----------------------------
         # dalpha/dnu from ATM constraint (holding normalVol pillar fixed)
         # Plain: alpha implied at T=expiry.
         # Top-down: alpha_eff depends on base alpha + time-decay H(nu) AND nu_eff(nu).
         # Bottom-up: segment-level dalpha_i/dnu_i.
-        # -----------------------------
+
         lnF = float(np.log(Fp))
         f_power_plain = float(Fp ** (beta_in - 1.0))
         one_minus_beta_in = 1.0 - beta_in
 
-        # ---------- TOP-DOWN ----------
+        # TOP-DOWN
         if self.method == "top-down":
-            te = float(expiry + tenor)   # TimeDecay uses t = expiry+tenor
+            te = float(expiry + tenor)   
             ts = float(expiry)
             k  = float(decay)
 
-            # base alpha (super().alpha()) is implied at te with (normalVol,beta,rho,nu)
             pr_base = Hagan2002LognormalSABR(
                 f=forward, shift=shift, t=te,
                 v_atm_n=normalVol, beta=beta_in, rho=rho_in, volvol=nu_in
@@ -1291,7 +1215,6 @@ class SABRCalculator:
             if alpha_base <= 0.0 or te <= 0.0:
                 return 0.0
 
-            # dalpha_base/dnu via cubic coefficients at te
             f_power = float(Fp ** (beta_in - 1.0))
             c_rho = float(2.0 - 3.0 * rho_in * rho_in)
             g = float(1.0 + te * (nu_in ** 2) * c_rho / 24.0)
@@ -1308,8 +1231,7 @@ class SABRCalculator:
                 dP_dnu  = float(da2_dnu * (alpha_base ** 2) + da1_dnu * alpha_base)
                 dalpha_base_dnu = float(-dP_dnu / dP_dalpha)
 
-            # TimeDecay mapping pieces (gamma, nuHat, H)
-            # tau = 2*k*ts + te
+            # TimeDecay mapping pieces
             tau = float(2.0 * k * ts + te)
             if tau <= 0.0 or te <= 0.0:
                 return 0.0
@@ -1317,19 +1239,15 @@ class SABRCalculator:
             gammaFirstTerm = tau * (2.0 * tau**3 + te**3 + (4.0*k*k - 2.0*k)*ts**3 + 6.0*k*ts**2*te)
             gammaSecondTerm = (3.0 * k * rho_in * rho_in * (te - ts)**2 * (3.0 * tau**2 - te**2 + 5.0*k*ts**2 + 4.0*ts*te))
             gamma = float(gammaFirstTerm / ((4.0*k + 3.0) * (2.0*k + 1.0)) + gammaSecondTerm / ((4.0*k + 3.0) * (3.0*k + 2.0)**2))
-
-            # nu_hat^2 = nu^2 * gamma*(2k+1)/(tau^3*te)
+            
             nu_hat2_coeff = float(gamma * (2.0*k + 1.0) / (tau**3 * te)) if gamma > 0.0 else 0.0
             dnu_eff_dnu = float(np.sqrt(nu_hat2_coeff))  # d(nu_eff)/d(nu_in)
 
-            # H_td = nu^2 * A0 - nu_hat^2
             A0 = float((tau**2 + 2.0*k*ts**2 + te**2) / (2.0*te*tau*(k + 1.0))) if (k + 1.0) != 0.0 else 0.0
             H_td = float((nu_in ** 2) * (A0 - nu_hat2_coeff))
             dHtd_dnu = float(2.0 * nu_in * (A0 - nu_hat2_coeff))
 
             # alpha_eff derivative wrt nu_in:
-            # alpha_eff = sqrt( const * alpha_base^2 * exp(0.5*H_td*te) )
-            # => dalpha_eff/dnu = alpha_eff*(dalpha_base/dnu / alpha_base + 0.25*te*dH_td/dnu)
             dalpha_eff_dnu = 0.0
             if alpha > 0.0 and alpha_base > 0.0:
                 dalpha_eff_dnu = float(alpha * (dalpha_base_dnu / alpha_base + 0.25 * te * dHtd_dnu))
@@ -1337,7 +1255,7 @@ class SABRCalculator:
             # Total: sigma depends on nu_eff and alpha_eff
             return float(dsigma_dnu_partial * dnu_eff_dnu + dsigma_dalpha * dalpha_eff_dnu)
 
-        # ---------- BOTTOM-UP (segment list) ----------
+        # BOTTOM-UP
         if self.method == "bottom-up":
             from fixedincomelib.date.utilities import accrued
 
@@ -1404,10 +1322,7 @@ class SABRCalculator:
                 if alpha_i <= 0.0:
                     continue
 
-                # d(nu_star)/d(nu_i) = w * s   (since nu_star = sum w*s*nu_i)
                 dNuStar_dNu_i = float(w * s)
-
-                # d(alpha_star)/d(nu_i) = sqrt(gamma_bar) * w*s * d(alpha_i)/d(nu_i)
                 f_power_i = float(Fp ** (b_i - 1.0))
                 c_rho_i = float(2.0 - 3.0 * rho_i * rho_i)
                 g_i = float(1.0 + Tst * (nu_i ** 2) * c_rho_i / 24.0)
@@ -1427,14 +1342,12 @@ class SABRCalculator:
 
                 dAlphaStar_dNu_i = float(pref * w * s * dalpha_i_dnu)
 
-                # segment contribution:
                 dSigma_dNu_i = float(dsigma_dnu_partial * dNuStar_dNu_i + dsigma_dalpha * dAlphaStar_dNu_i)
                 out.append((Tst, Ti, dSigma_dNu_i))
 
             return out
 
-        # ---------- PLAIN ----------
-        # dalpha/dnu at T=expiry (ATM constraint, normalVol held fixed)
+        #PLAIN
         f_power = float(Fp ** (beta_in - 1.0))
         c_rho = float(2.0 - 3.0 * rho_in * rho_in)
         g = float(1.0 + float(expiry) * (nu_in ** 2) * c_rho / 24.0)
@@ -1469,13 +1382,6 @@ class SABRCalculator:
         shift: float,
         decay: float = 0.0,
     ):
-        """
-        Analytic d(sigma_LN(strike))/d(RHO pillar).
-
-        Returns:
-          - plain/top-down: float
-          - bottom-up: list[(seg_expiry=Tstart, seg_tenor=Ti, dSigma_dRho_i)]
-        """
 
         beta_in = float(beta)
         rho_in  = float(rho)
@@ -1486,9 +1392,6 @@ class SABRCalculator:
         if Fp <= 0.0 or Kp <= 0.0:
             return 0.0 if self.method != "bottom-up" else []
 
-        # -----------------------------
-        # Build pricer (all methods) and read EFFECTIVE params for sigma(K)
-        # -----------------------------
         if self.method == "bottom-up":
             if self.corr_surf is None:
                 raise ValueError("corr_surf must be provided for bottom-up method")
@@ -1540,9 +1443,7 @@ class SABRCalculator:
         if sigmaK <= 0.0:
             return 0.0 if self.method != "bottom-up" else []
 
-        # -----------------------------
-        # Compute dsigma/dalpha, (∂sigma/∂rho)|alpha,nu, and (∂sigma/∂nu)|alpha,rho
-        # -----------------------------
+        # Compute dsigma/dalpha, (dsigma/drho)|alpha,nu, and (dsigma/dnu)|alpha,rho
         one_minus_beta = 1.0 - beta_eff
         L = float(np.log(Fp / Kp))
 
@@ -1566,7 +1467,7 @@ class SABRCalculator:
         x = float(np.log((sqrt_term + z - rho_eff) / (1.0 - rho_eff)))
         dx_dz = 1.0 / sqrt_term
 
-        # dsigma/dalpha pieces
+        # dsigma/dalpha
         dA_dalpha = (one_minus_beta ** 2) * alpha / (12.0 * fkbeta)
         dB_dalpha = B / alpha
         dH_dalpha = float((dA_dalpha + dB_dalpha) * T)
@@ -1574,14 +1475,14 @@ class SABRCalculator:
         dz_dalpha = -z / alpha
         dx_dalpha = float(dx_dz * dz_dalpha)
 
-        # (∂sigma/∂nu_eff)|alpha,rho pieces (needed for top-down chain, because nu_eff depends on rho_in via gamma)
+        # (dsigma/dnu_eff)|alpha,rho
         dz_dnu = float(sqrt_fkbeta * L / alpha)
         dB_dnu = float(0.25 * rho_eff * beta_eff * alpha / sqrt_fkbeta)
         dC_dnu = float((2.0 - 3.0 * rho_eff * rho_eff) * nu_eff / 12.0)
         dH_dnu = float((dB_dnu + dC_dnu) * T)
         dx_dnu = float(dx_dz * dz_dnu)
 
-        # (∂sigma/∂rho_eff)|alpha,nu pieces
+        # (dsigma/drho_eff)|alpha,nu
         dB_drho = float(0.25 * beta_eff * nu_eff * alpha / sqrt_fkbeta)
         dC_drho = float(-(rho_eff * (nu_eff ** 2)) / 4.0)
         dH_drho = float((dB_drho + dC_drho) * T)
@@ -1591,7 +1492,7 @@ class SABRCalculator:
         if abs(A_x) <= 1e-18 or abs(1.0 - rho_eff) <= 1e-18:
             return 0.0 if self.method != "bottom-up" else []
 
-        dsqrt_drho = float(-z / sqrt_term)             # d/dρ sqrt(1 - 2ρz + z^2)
+        dsqrt_drho = float(-z / sqrt_term)             
         dA_x_drho  = float(dsqrt_drho - 1.0)
         dx_drho = float(dA_x_drho / A_x + 1.0 / (1.0 - rho_eff))
 
@@ -1604,12 +1505,12 @@ class SABRCalculator:
             dDenom_dalpha = sqrt_fkbeta * Q * dx_dalpha
             dsigma_dalpha = 0.0 if abs(Denom) <= 1e-18 else float((dNumer_dalpha * Denom - Numer * dDenom_dalpha) / (Denom * Denom))
 
-            # (∂sigma/∂nu_eff)|alpha,rho
+            # (dsigma/dnu_eff)|alpha,rho
             dNumer_dnu = alpha * dz_dnu * H + alpha * z * dH_dnu
             dDenom_dnu = sqrt_fkbeta * Q * dx_dnu
             dsigma_dnu_partial = 0.0 if abs(Denom) <= 1e-18 else float((dNumer_dnu * Denom - Numer * dDenom_dnu) / (Denom * Denom))
 
-            # (∂sigma/∂rho_eff)|alpha,nu
+            # (dsigma/drho_eff)|alpha,nu
             dNumer_drho = alpha * z * dH_drho
             dDenom_drho = sqrt_fkbeta * Q * dx_drho
             dsigma_drho_partial = 0.0 if abs(Denom) <= 1e-18 else float((dNumer_drho * Denom - Numer * dDenom_drho) / (Denom * Denom))
@@ -1623,18 +1524,15 @@ class SABRCalculator:
             dsigma_dnu_partial  = 0.0 if abs(Denom) <= 1e-18 else float((alpha * dH_dnu) / Denom)
             dsigma_drho_partial = 0.0 if abs(Denom) <= 1e-18 else float((alpha * dH_drho) / Denom)
 
-        # -----------------------------
         # Plain / top-down: need dalpha/dRho (ATM constraint holding normalVol fixed)
         # Bottom-up: segment-level dalpha_i/dRho_i
-        # -----------------------------
 
-        # ---------- TOP-DOWN ----------
+        # TOP-DOWN
         if self.method == "top-down":
             te = float(expiry + tenor)
             ts = float(expiry)
             k  = float(decay)
 
-            # base alpha at te (super().alpha()) with base rho_in
             pr_base = Hagan2002LognormalSABR(
                 f=forward, shift=shift, t=te,
                 v_atm_n=normalVol, beta=beta_in, rho=rho_in, volvol=nu_in
@@ -1643,7 +1541,6 @@ class SABRCalculator:
             if alpha_base <= 0.0 or te <= 0.0:
                 return 0.0
 
-            # dalpha_base/drho via ATM polynomial P(alpha)=0
             f_power = float(Fp ** (beta_in - 1.0))
             c_rho = float(2.0 - 3.0 * rho_in * rho_in)
             g = float(1.0 + te * (nu_in ** 2) * c_rho / 24.0)
@@ -1661,7 +1558,6 @@ class SABRCalculator:
                 dP_drho  = float(da2_drho * (alpha_base ** 2) + da1_drho * alpha_base)
                 dalpha_base_drho = float(-dP_drho / dP_dalpha)
 
-            # TimeDecay mapping: gamma = G0 + G2*rho^2  => dγ/dρ = 2*rho*G2
             tau = float(2.0 * k * ts + te)
             if tau <= 0.0:
                 return 0.0
@@ -1679,7 +1575,6 @@ class SABRCalculator:
 
             dgamma_drho = float(2.0 * rho_in * G2)
 
-            # nuHat2 = nu^2 * gamma*(2k+1)/(tau^3*te)
             Cnu = float((2.0*k + 1.0) / (tau**3 * te))
             nuHat2 = float((nu_in ** 2) * gamma * Cnu)
             nuHat2 = max(nuHat2, 0.0)
@@ -1691,27 +1586,21 @@ class SABRCalculator:
             if nu_eff_td > 0.0:
                 dnu_eff_drho = float(0.5 * dnuHat2_drho / nu_eff_td)
 
-            # H_td = nu^2*A0 - nuHat2  => dH_td/dρ = - dnuHat2/dρ
             dHtd_drho = float(-dnuHat2_drho)
-
-            # dalpha_eff/dρ = alpha_eff * (dalpha_base/alpha_base + 0.25*te*dH_td/dρ)
             dalpha_eff_drho = float(alpha * (dalpha_base_drho / alpha_base + 0.25 * te * dHtd_drho))
-
-            # rhoHat = rho * M / sqrt(gamma)
             M = float((3.0 * tau * tau + 2.0 * k * ts * ts + te * te) / (6.0 * k + 4.0))
             sqrt_gamma = float(np.sqrt(gamma))
             rho_eff_td = float(rho_in * M / sqrt_gamma)
 
             drho_eff_drho = float(M / sqrt_gamma - (rho_in * M) * 0.5 * dgamma_drho / (gamma * sqrt_gamma))
 
-            # Total chain (sigma uses effective params):
             return float(
                 dsigma_drho_partial * drho_eff_drho
                 + dsigma_dnu_partial * dnu_eff_drho
                 + dsigma_dalpha * dalpha_eff_drho
             )
 
-        # ---------- BOTTOM-UP (segment list) ----------
+        # BOTTOM-UP
         if self.method == "bottom-up":
             from fixedincomelib.date.utilities import accrued
 
@@ -1779,10 +1668,7 @@ class SABRCalculator:
                 if alpha_i <= 0.0:
                     continue
 
-                # d(rho_star)/d(rho_i) = w / sqrt(gamma_bar)
                 dRhoStar_dRho_i = float(w * inv_sqrt_gb)
-
-                # d(alpha_star)/d(rho_i) = sqrt(gamma_bar) * w*s * d(alpha_i)/d(rho_i)
                 f_power_i = float(Fp ** (b_i - 1.0))
                 c_rho_i = float(2.0 - 3.0 * rho_i * rho_i)
                 g_i = float(1.0 + Tst * (nu_i ** 2) * c_rho_i / 24.0)
@@ -1802,14 +1688,12 @@ class SABRCalculator:
 
                 dAlphaStar_dRho_i = float(pref_alpha * w * s * dalpha_i_drho)
 
-                # segment contribution
                 dSigma_dRho_i = float(dsigma_drho_partial * dRhoStar_dRho_i + dsigma_dalpha * dAlphaStar_dRho_i)
                 out.append((Tst, Ti, dSigma_dRho_i))
 
             return out
 
-        # ---------- PLAIN ----------
-        # dalpha/drho at T=expiry (ATM constraint holding normalVol fixed)
+        #PLAIN
         T0 = float(expiry)
         if T0 <= 0.0:
             return 0.0
@@ -1847,21 +1731,16 @@ class SABRCalculator:
         shift: float,
         decay: float,
     ) -> float:
-        """
-        Analytic d(sigma_LN(K))/d(decay_speed) for TOP-DOWN.
-        For non-top-down methods returns 0.0.
-        """
         if self.method != "top-down":
             return 0.0
 
-        ts = float(expiry)                 # decayStart
-        te = float(expiry + tenor)         # total time used by TimeDecayLognormalSABR
+        ts = float(expiry)                 
+        te = float(expiry + tenor)         
         k  = float(decay)
 
         if te <= 0.0:
             return 0.0
         if ts >= te:
-            # TimeDecayLognormalSABR short-circuits to base params -> no decay dependence
             return 0.0
 
         Fp = float(forward + shift)
@@ -1869,7 +1748,6 @@ class SABRCalculator:
         if Fp <= 0.0 or Kp <= 0.0:
             return 0.0
 
-        # Build effective pricer to get (alpha_eff, beta_eff, rho_eff, nu_eff) used in sigma(K)
         pr_eff = TimeDecayLognormalSABR(
             f=forward,
             shift=shift,
@@ -1889,7 +1767,6 @@ class SABRCalculator:
         if alpha_eff <= 0.0 or nu_eff <= 0.0:
             return 0.0
 
-        # Base alpha used inside your TimeDecay effective-param formulas
         pr_base = Hagan2002LognormalSABR(
             f=forward,
             shift=shift,
@@ -1903,10 +1780,7 @@ class SABRCalculator:
         if alpha_base <= 0.0:
             return 0.0
 
-        # -------------------------------
-        # PART A: partials of sigma wrt effective params (alpha, rho, nu)
-        # sigma = Numer/Denom with Numer = alpha*z*H, Denom = sqrt_fkbeta*Q*x
-        # -------------------------------
+        #partials of sigma wrt effective params (alpha, rho, nu)
         alpha = alpha_eff
         beta_ = beta_eff
         rho_  = rho_eff
@@ -1936,7 +1810,6 @@ class SABRCalculator:
         dsigma_drho   = 0.0
         dsigma_dnu    = 0.0
 
-        # pieces for H-derivs
         dB_drho = float(0.25 * beta_ * nu_ * alpha / sqrt_fkbeta)
         dC_drho = float(-rho_ * (nu_ ** 2) / 4.0)
         dH_drho = float((dB_drho + dC_drho) * T)
@@ -1945,7 +1818,6 @@ class SABRCalculator:
         dC_dnu  = float((2.0 - 3.0 * rho_ * rho_) * nu_ / 12.0)
         dH_dnu  = float((dB_dnu + dC_dnu) * T)
 
-        # z-derivs (alpha const for rho/nu partials)
         dz_dnu = float(z / nu_) if abs(nu_) > 0.0 else 0.0
         dz_drho = 0.0
 
@@ -1957,15 +1829,9 @@ class SABRCalculator:
                 return 0.0
 
             x = float(np.log(A_x / B_x))
-
-            # dx/dz and dx/drho
             dx_dz = float(1.0 / sqrt_term)
-
-            # holding z constant:
             dA_drho = float((-z / sqrt_term) - 1.0)
             dx_drho = float(dA_drho / A_x + 1.0 / (1.0 - rho_))
-
-            # dx/dnu via z
             dx_dnu = float(dx_dz * dz_dnu)
 
             Numer = float(alpha * z * H)
@@ -1973,17 +1839,11 @@ class SABRCalculator:
             if abs(Denom) <= 1e-18:
                 return 0.0
 
-            # --- dsigma/dalpha (already in your earlier code; keep consistent) ---
-            # Here we only need it for chain rule; reuse your known formula path:
-            # (derive via Numer/Denom with alpha-dependence through z and H and x(z))
-            # We'll recompute quickly:
             # dz/dalpha = -z/alpha
             dz_dalpha = float(-z / alpha)
-            # dH/dalpha = (dA/dalpha + dB/dalpha)*T
             dA_dalpha = float((one_minus_beta ** 2) * alpha / (12.0 * fkbeta))
             dB_dalpha = float(B / alpha)
             dH_dalpha = float((dA_dalpha + dB_dalpha) * T)
-            # dx/dalpha = dx/dz * dz/dalpha
             dx_dalpha = float(dx_dz * dz_dalpha)
 
             dNumer_dalpha = float(alpha * dz_dalpha * H + alpha * z * dH_dalpha + z * H)
@@ -1991,23 +1851,21 @@ class SABRCalculator:
 
             dsigma_dalpha = float((dNumer_dalpha * Denom - Numer * dDenom_dalpha) / (Denom * Denom))
 
-            # --- dsigma/drho ---
+            #dsigma/drho
             dNumer_drho = float(alpha * dz_drho * H + alpha * z * dH_drho)  # dz_drho=0
             dDenom_drho = float(sqrt_fkbeta * Q * dx_drho)
             dsigma_drho = float((dNumer_drho * Denom - Numer * dDenom_drho) / (Denom * Denom))
 
-            # --- dsigma/dnu ---
+            #dsigma/dnu
             dNumer_dnu = float(alpha * dz_dnu * H + alpha * z * dH_dnu)
             dDenom_dnu = float(sqrt_fkbeta * Q * dx_dnu)
             dsigma_dnu = float((dNumer_dnu * Denom - Numer * dDenom_dnu) / (Denom * Denom))
 
         else:
-            # ATM-like branch: sigma = alpha*H/(sqrt_fkbeta*Q)
             Denom = float(sqrt_fkbeta * Q)
             if abs(Denom) <= 1e-18:
                 return 0.0
 
-            # dsigma/dalpha for ATM-branch: (H + alpha*dH/dalpha)/Denom
             dA_dalpha = float((one_minus_beta ** 2) * alpha / (12.0 * fkbeta))
             dB_dalpha = float(B / alpha) if alpha != 0.0 else 0.0
             dH_dalpha = float((dA_dalpha + dB_dalpha) * T)
@@ -2016,16 +1874,13 @@ class SABRCalculator:
             dsigma_drho = float(alpha * dH_drho / Denom)
             dsigma_dnu  = float(alpha * dH_dnu  / Denom)
 
-        # -------------------------------
-        # PART B: d(alpha_eff)/dk, d(rho_eff)/dk, d(nu_eff)/dk from TimeDecay formulas
+        # d(alpha_eff)/dk, d(rho_eff)/dk, d(nu_eff)/dk from TimeDecay formulas
         # Using base (alpha_base, rho, nu) as constants wrt k
-        # -------------------------------
         alpha0 = alpha_base
         rho0   = float(rho)
         nu0    = float(nu)
 
         if k < 0.0:
-            # your model probably clamps decay >= 0; if not, keep safe
             return 0.0
 
         dtau = float(2.0 * ts)
@@ -2033,7 +1888,7 @@ class SABRCalculator:
         if tau <= 0.0:
             return 0.0
 
-        # gamma parts
+        # gamma part
         denA = float((4.0 * k + 3.0) * (2.0 * k + 1.0))
         denB = float((4.0 * k + 3.0) * (3.0 * k + 2.0) ** 2)
         if denA == 0.0 or denB == 0.0:
@@ -2059,16 +1914,12 @@ class SABRCalculator:
 
         dgamma = float((dgFirst * denA - gFirst * dDenA) / (denA * denA) + (dgSecond * denB - gSecond * dDenB) / (denB * denB))
 
-        # nuHat2 = nu0^2 * gamma * (2k+1)/(tau^3 * te)
         nuHat2 = float((nu0 ** 2) * gamma * (2.0 * k + 1.0) / (tau**3 * te))
         nuHat  = float(np.sqrt(nuHat2))
 
-        # log-derivative form:
         dnuHat2 = float(nuHat2 * ((dgamma / gamma) + (2.0 / (2.0 * k + 1.0)) - 3.0 * (dtau / tau)))
-
         dnuHat = float(0.5 * dnuHat2 / nuHat)
 
-        # H = nu0^2*(tau^2 + 2k ts^2 + te^2)/(2 te tau (k+1)) - nuHat2
         termA = float((nu0 ** 2) * (tau**2 + 2.0 * k * ts**2 + te**2))
         termB = float(2.0 * te * tau * (k + 1.0))
         if termB == 0.0:
@@ -2083,25 +1934,18 @@ class SABRCalculator:
         H_td  = float(H1 - nuHat2)
         dH_td = float(dH1 - dnuHat2)
 
-        # alphaHat2 = (alpha0^2/(2k+1))*(tau/te)*exp(0.5*H_td*te)
         alphaHat2 = float((alpha0 ** 2) / (2.0 * k + 1.0) * (tau / te) * np.exp(0.5 * H_td * te))
         alphaHat  = float(np.sqrt(alphaHat2))
-
-        # d ln alphaHat2 = -2/(2k+1) + dtau/tau + 0.5*te*dH_td
         dalphaHat2 = float(alphaHat2 * (-2.0 / (2.0 * k + 1.0) + (dtau / tau) + 0.5 * te * dH_td))
         dalphaHat  = float(0.5 * dalphaHat2 / alphaHat)
 
-        # rhoHat = rho0 * (3 tau^2 + 2k ts^2 + te^2)/( sqrt(gamma)*(6k+4) )
         numR = float(3.0 * tau**2 + 2.0 * k * ts**2 + te**2)
         dnumR = float(6.0 * tau * dtau + 2.0 * ts**2)
 
         rhoHat = float(rho0 * numR / (np.sqrt(gamma) * (6.0 * k + 4.0)))
-        # d ln rhoHat = dnumR/numR - 0.5 dgamma/gamma - 6/(6k+4)
         drhoHat = float(rhoHat * ((dnumR / numR) - 0.5 * (dgamma / gamma) - (6.0 / (6.0 * k + 4.0))))
 
-        # -------------------------------
         # Combine
-        # -------------------------------
         dSigma_dk = float(dsigma_dalpha * dalphaHat + dsigma_drho * drhoHat + dsigma_dnu * dnuHat)
         return dSigma_dk
 
@@ -2115,12 +1959,6 @@ class SABRCalculator:
         strike: float,
         shift: float,
     ) -> float:
-        """
-        Analytic d(sigma_LN(K))/d(gamma_1N) for BOTTOM-UP,
-        where gamma_1N = corr_surf.corr(expiry, T_total) used to build gamma_bar.
-
-        For non-bottom-up methods returns 0.0.
-        """
         if self.method != "bottom-up":
             return 0.0
         if self.corr_surf is None:
@@ -2133,7 +1971,6 @@ class SABRCalculator:
         if Fp <= 0.0 or Kp <= 0.0:
             return 0.0
 
-        # Build bottom-up pricer to get effective params for sigma(K)
         pr = BottomUpLognormalSABR(
             f=forward,
             shift=shift,
@@ -2152,9 +1989,7 @@ class SABRCalculator:
         if T <= 0.0 or alpha_eff <= 0.0:
             return 0.0
 
-        # -------------------------------
-        # Rebuild the gamma_bar construction and its derivative wrt gamma_1N
-        # -------------------------------
+        # gamma_bar construction and its derivative wrt gamma_1N
         from fixedincomelib.date.utilities import accrued
 
         dates = self.product.get_fixing_schedule()
@@ -2192,8 +2027,6 @@ class SABRCalculator:
         mu = float((1.0 - gamma_1N) / (N - 1))
         dmu_dgamma1N = float(-1.0 / (N - 1))
 
-        # Gamma_ij = max(0, 1 - mu*|i-j|)
-        # dGamma_ij/dmu = -|i-j| if active else 0
         Gamma = np.zeros((N, N))
         dGamma_dmu = np.zeros((N, N))
         for i in range(N):
@@ -2212,7 +2045,6 @@ class SABRCalculator:
         dgamma_bar_dmu = float(dGamma_dmu.mean())
         dgamma_bar_dgamma1N = float(dgamma_bar_dmu * dmu_dgamma1N)
 
-        # Need alpha_sum = Σ w s alpha_i and rho_sum = Σ w rho_i
         alpha_sum = 0.0
         rho_sum   = 0.0
         for w, s, Ti, Tst in zip(weights, time_scales, Tis, Tstarts):
@@ -2234,8 +2066,6 @@ class SABRCalculator:
             alpha_sum += float(w) * float(s) * alpha_i
             rho_sum   += float(w) * float(rho_i)
 
-        # alpha_star = sqrt(gbar)*alpha_sum
-        # rho_star   = (1/sqrt(gbar))*rho_sum
         sqrt_g = float(np.sqrt(gamma_bar))
         dalphaStar_dgbar = float(alpha_sum / (2.0 * sqrt_g))
         drhoStar_dgbar   = float(-rho_sum / (2.0 * (gamma_bar ** 1.5)))
@@ -2243,10 +2073,7 @@ class SABRCalculator:
         dalphaStar_dgamma1N = float(dalphaStar_dgbar * dgamma_bar_dgamma1N)
         drhoStar_dgamma1N   = float(drhoStar_dgbar   * dgamma_bar_dgamma1N)
 
-        # -------------------------------
         # Partials: dsigma/dalpha and dsigma/drho at effective params
-        # (same Hagan-style differentiation as before)
-        # -------------------------------
         alpha = alpha_eff
         beta_ = beta_eff
         rho_  = rho_eff
@@ -2324,9 +2151,7 @@ class SABRCalculator:
 
             dsigma_drho = float(alpha * dH_drho / Denom)
 
-        # -------------------------------
         # Combine corr sensitivity
-        # -------------------------------
         dSigma_dgamma1N = float(dsigma_dalpha * dalphaStar_dgamma1N + dsigma_drho * drhoStar_dgamma1N)
         return dSigma_dgamma1N
 

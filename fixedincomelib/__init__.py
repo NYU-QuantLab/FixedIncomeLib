@@ -6,7 +6,6 @@ from fixedincomelib.builders import *
 from fixedincomelib.conventions import *
 from fixedincomelib.data import *
 from fixedincomelib.date import *
-from fixedincomelib.diagnostics import *
 from fixedincomelib.fixings import *
 from fixedincomelib.model import *
 from fixedincomelib.sabr import *

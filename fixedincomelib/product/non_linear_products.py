@@ -283,11 +283,8 @@ class ProductOvernightCapFloor(Product):
         )
 
     def get_fixing_schedule(self) -> list[Date]:
-        mgr     = IndexManager.instance()
-        raw     = mgr.get_fixings(self.indexKey_, self.effectiveDate, self.maturityDate)
-        fixing_qldates = sorted(raw.keys())
-        dates = [self.effectiveDate] + [Date(d) for d in fixing_qldates] + [self.maturityDate]
-        return dates
+        cal = self.capStream.element(0).oisIndex_.fixingCalendar()
+        return business_day_schedule(self.effectiveDate, self.maturityDate, cal)
 
     @property
     def effectiveDate(self) -> Date:
