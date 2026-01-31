@@ -1,13 +1,2 @@
-from fixedincomelib.analytics import *
-from fixedincomelib.product import *
-from fixedincomelib.yield_curve import *
-from fixedincomelib.market import *
-from fixedincomelib.builders import *
-from fixedincomelib.conventions import *
-from fixedincomelib.data import *
-from fixedincomelib.date import *
-from fixedincomelib.fixings import *
-from fixedincomelib.model import *
-from fixedincomelib.sabr import *
-from fixedincomelib.utilities import *
-from fixedincomelib.valuation import *
+# fixedincomelib/__init__.py
+__all__ = []

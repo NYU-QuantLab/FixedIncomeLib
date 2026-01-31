@@ -5,7 +5,7 @@ from fixedincomelib.yield_curve.yield_curve_model import YieldCurve
 from fixedincomelib.product import (LongOrShort, ProductIborCashflow, ProductBulletCashflow, ProductFuture, ProductRfrFuture,ProductIborSwap,ProductOvernightSwap,
                         ProductOvernightIndexCashflow, ProductPortfolio)
 from fixedincomelib.valuation import (ValuationEngine, ValuationEngineRegistry, IndexManager)
-from fixedincomelib.date.utilities import accrued
+from fixedincomelib.date.utilities import accrued, business_day_schedule
 
 class ValuationEngineProductBulletCashflow(ValuationEngine):
 

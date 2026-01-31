@@ -1,8 +1,10 @@
 from typing import Any, Dict
-from fixedincomelib.sabr import SabrModel
-from fixedincomelib.analytics import SABRCalculator
-from fixedincomelib.valuation import (ValuationEngine, ValuationEngineRegistry, IndexManager)
-from fixedincomelib.product import (LongOrShort, ProductIborCapFloorlet, ProductOvernightCapFloorlet, ProductIborCapFloor, ProductOvernightCapFloor, ProductIborSwaption, ProductOvernightSwaption)
+from fixedincomelib.sabr.sabr_model import SabrModel
+from fixedincomelib.analytics.sabr_calculator import SABRCalculator
+from fixedincomelib.valuation.valuation_engine import ValuationEngine
+from fixedincomelib.valuation.valuation_engine_registry import ValuationEngineRegistry
+from fixedincomelib.valuation.index_fixing_registry import IndexManager
+from fixedincomelib.product.non_linear_products import (LongOrShort, ProductIborCapFloorlet, ProductOvernightCapFloorlet, ProductIborCapFloor, ProductOvernightCapFloor, ProductIborSwaption, ProductOvernightSwaption)
 from fixedincomelib.date.utilities import accrued
 from fixedincomelib.sabr.sabr_surface_risk import accumulate_surface_pillar_risk
 import numpy as np
