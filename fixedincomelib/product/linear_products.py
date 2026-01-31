@@ -7,9 +7,7 @@ from typing import List, Optional, Union
 from fixedincomelib.date.utilities import makeSchedule,accrued
 from fixedincomelib.product.portfolio import ProductPortfolio
 
-# -------------------------
 # Atomic Cash-Flow Classes
-# -------------------------
 
 class ProductBulletCashflow(Product):
     prodType = "ProductBulletCashflow"
@@ -78,7 +76,7 @@ class ProductIborCashflow(Product):
     
     @property
     def accrualFactor(self) -> float:
-        return accrued(self.accrualStart_, self.accrualEnd_)
+        return float(self.iborIndex_.dayCounter().yearFraction(self.accrualStart_, self.accrualEnd_))
     
     @property
     def paymentDate(self) -> Date:
@@ -186,7 +184,7 @@ class ProductFuture(Product):
         if contractualSize is not None:
             self.accrualFactor_ = contractualSize
         else:
-            self.accrualFactor_ = accrued(self.effectiveDate_, self.maturityDate_)
+            self.accrualFactor_ = float(self.index_.dayCounter().yearFraction(self.effectiveDate_, self.maturityDate_))
         
         super().__init__(self.effectiveDate_, self.maturityDate_, notional, longOrShort, Currency(self.index_.currency().code()))
      
@@ -292,9 +290,7 @@ class ProductRfrFuture(Product):
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
     
-# --------------------------------
 # Composition: Streams & Swaps
-# --------------------------------
 
 class InterestRateStream(ProductPortfolio):
 
@@ -304,6 +300,7 @@ class InterestRateStream(ProductPortfolio):
         endDate: str,
         frequency: str,
         iborIndex: Optional[str]       = None,
+        iborSpread: float              = 0.0,
         overnightIndex: Optional[str]  = None,
         fixedRate: Optional[float]     = None,
         ois_compounding: str           = "COMPOUND",
@@ -326,11 +323,12 @@ class InterestRateStream(ProductPortfolio):
         prods, weights = [], []
         for row in schedule.itertuples(index=False):
             if iborIndex:
-                cf = ProductIborCashflow(Date(row.StartDate), Date(row.EndDate), iborIndex, 0.0, notional, position, Date(row.PaymentDate))
+                cf = ProductIborCashflow(Date(row.StartDate), Date(row.EndDate), iborIndex, iborSpread, notional, position, Date(row.PaymentDate))
             elif overnightIndex:
                 cf = ProductOvernightIndexCashflow(Date(row.StartDate), Date(row.EndDate), overnightIndex, ois_compounding, ois_spread, notional, position, Date(row.PaymentDate))
             else:
-                alpha_i = accrued(Date(row.StartDate), Date(row.EndDate))
+                dayCounter = AccrualBasis(accrualBasis).value
+                alpha_i = float(dayCounter.yearFraction(Date(row.StartDate), Date(row.EndDate)))
                 coupon_amt = notional * (fixedRate or 0.0) * alpha_i
                 cf = ProductBulletCashflow(Date(row.EndDate), currency, coupon_amt, position, Date(row.PaymentDate))
             prods.append(cf)
@@ -372,6 +370,7 @@ class ProductIborSwap(Product):
             endDate        = maturityDate,
             frequency      = frequency,
             iborIndex      = iborIndex,
+            iborSpread     = spread,
             overnightIndex = None,
             fixedRate      = None,
             notional       = notional,
@@ -473,6 +472,8 @@ class ProductOvernightSwap(Product):
             iborIndex      = None,
             overnightIndex = overnightIndex,
             fixedRate      = None,
+            ois_compounding= "COMPOUND",
+            ois_spread     = spread,  
             notional       = notional,
             position       = float_position,
             holConv        = holConv,

@@ -1,6 +1,6 @@
 import pandas as pd
 import QuantLib as ql
-from QuantLib import Schedule, Period, Days, Following, DateGeneration
+from QuantLib import Schedule, Days, Following, DateGeneration
 from typing import Optional
 from fixedincomelib.date.classes import (Date, Period)
 from fixedincomelib.market import *
@@ -91,19 +91,42 @@ def makeSchedule(
     
     return df
 
-def business_day_schedule(
-    start_date: Date,
-    end_date:   Date,
-    calendar) -> list[Date]:
+# def business_day_schedule(
+#     start_date: Date,
+#     end_date:   Date,
+#     calendar) -> list[Date]:
 
-    ql_sched = ql.Schedule(
-        start_date,
-        end_date,
-        ql.Period(1, ql.Days),
-        calendar,
-        ql.Following, ql.Following,
-        ql.DateGeneration.Forward,
-        False
-    )
+#     ql_sched = ql.Schedule(
+#         start_date,
+#         end_date,
+#         ql.Period(1, ql.Days),
+#         calendar,
+#         ql.Following, ql.Following,
+#         ql.DateGeneration.Forward,
+#         False
+#     )
 
-    return [ Date(d) for d in ql_sched ]
+#     return [ Date(d) for d in ql_sched ]
+
+def business_day_schedule(start_date, end_date, calendar, bdc=ql.Following):
+    start = Date(start_date)
+    end   = Date(end_date)
+
+    if end < start:
+        raise ValueError(f"end_date {end} < start_date {start}")
+
+    d = Date(calendar.adjust(start, bdc))
+    dates = [d]
+
+    while True:
+        nxt = Date(calendar.advance(d, 1, ql.Days, bdc))
+        if nxt >= end:     
+            break
+        if nxt != dates[-1]:
+            dates.append(nxt)
+        d = nxt
+
+    if dates[-1] != end:
+        dates.append(end)
+
+    return dates

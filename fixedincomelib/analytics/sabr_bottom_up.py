@@ -11,79 +11,164 @@ class BottomUpLognormalSABR(Hagan2002LognormalSABR):
         tenor: float,
         model,
         corr_surf,
-        product
+        product,
     ):
-        self._expiry   = expiry
-        self._tenor    = tenor
-        self._model    = model
-        self._corr     = corr_surf
-        self._product  = product
+        self._expiry = float(expiry)
+        self._tenor = float(tenor)
+        self._model = model
+        self._corr = corr_surf
+        self._product = product
+
+        if self._expiry < 0.0:
+            raise ValueError(f"[BottomUpLognormalSABR] expiry must be >= 0, got {self._expiry}")
+        if self._tenor <= 0.0:
+            raise ValueError(f"[BottomUpLognormalSABR] tenor must be > 0, got {self._tenor}")
 
         super().__init__(
-            f       = f,
-            shift   = shift,
-            t       = expiry + tenor,
-            v_atm_n = 0.0,              
-            beta    = 0.0,              
-            rho     = 0.0,              
-            volvol  = 0.0               
+            f=float(f),
+            shift=float(shift),
+            t=self._expiry + self._tenor,
+            v_atm_n=0.0,
+            beta=0.0,
+            rho=0.0,
+            volvol=0.0,
         )
 
         self._computeEffectiveParams()
 
     def _computeEffectiveParams(self):
         dates = self._product.get_fixing_schedule()
-        Tis   = [accrued(d0, d1) for d0,d1 in zip(dates, dates[1:])]
-        total = sum(Tis)
-        weights = [Ti/total for Ti in Tis]
+        if dates is None or len(dates) < 2:
+            raise ValueError("[BottomUpLognormalSABR] product fixing schedule must have at least 2 dates.")
 
-        alphas = []
-        betas  = []
-        nus    = []
-        rhos   = []
-        for Ti in Tis:
+        Tis = [float(accrued(d0, d1)) for d0, d1 in zip(dates, dates[1:])]
+        if any((not np.isfinite(Ti)) for Ti in Tis):
+            raise ValueError(f"[BottomUpLognormalSABR] Non-finite accruals in Tis: {Tis}")
+        if any(Ti <= 0.0 for Ti in Tis):
+            raise ValueError(f"[BottomUpLognormalSABR] All segment accruals Ti must be > 0, got {Tis}")
+
+        total = float(sum(Tis))
+        if total <= 0.0:
+            raise ValueError(f"[BottomUpLognormalSABR] Sum of segment accruals must be > 0, got {total}")
+
+        weights = [float(Ti / total) for Ti in Tis]
+
+        # Segment "end times" from today: Tend_i = expiry + sum_{k<=i} Tk
+        offsets_end = np.cumsum(Tis)  # length N
+        Tends = [self._expiry + float(x) for x in offsets_end]
+
+        if any((not np.isfinite(T)) for T in Tends):
+            raise ValueError(f"[BottomUpLognormalSABR] Non-finite segment end times Tends: {Tends}")
+        if any(T <= 0.0 for T in Tends):
+            raise ValueError(f"[BottomUpLognormalSABR] All segment end times Tend must be > 0, got {Tends}")
+
+        Te = float(sum(w * T for w, T in zip(weights, Tends)))
+        if not np.isfinite(Te) or Te <= 0.0:
+            raise ValueError(f"[BottomUpLognormalSABR] Te must be finite and > 0, got Te={Te}")
+
+        time_scales = [float(np.sqrt(T / Te)) for T in Tends]
+        if any((not np.isfinite(s)) for s in time_scales):
+            raise ValueError(f"[BottomUpLognormalSABR] Non-finite time_scales: {time_scales}")
+
+        alphas: list[float] = []
+        betas: list[float] = []
+        nus: list[float] = []
+        rhos: list[float] = []
+
+        for Ti, Tend in zip(Tis, Tends):
             v_n_i, b_i, nu_i, rho_i, _, _ = self._model.get_sabr_parameters(
-                index        = self._product.index,
-                expiry       = self._expiry,
-                tenor        = Ti,
-                product_type = None
+                index=self._product.index,
+                expiry=float(Tend),
+                tenor=float(Ti),
+                product_type=None,
             )
-            p = Hagan2002LognormalSABR(
-                f       = self.f,
-                shift   = self.shift,
-                t       = self._expiry,
-                v_atm_n = v_n_i,
-                beta    = b_i,
-                rho     = rho_i,
-                volvol  = nu_i
-            )
-            alphas.append(p.alpha())
-            betas .append(b_i)
-            nus   .append(nu_i)
-            rhos  .append(rho_i)
 
-        T_total = sum(Tis)
-        gamma_1N = self._corr.corr(self._expiry, T_total)
-        mu = (1.0 - gamma_1N) / (len(Tis) - 1)
+            v_n_i = float(v_n_i)
+            b_i = float(b_i)
+            nu_i = float(nu_i)
+            rho_i = float(rho_i)
+
+            if v_n_i < 0.0:
+                raise ValueError(f"[BottomUpLognormalSABR] Segment normal vol < 0: {v_n_i} at Tend={Tend}, Ti={Ti}")
+            if not (0.0 <= b_i <= 1.0):
+                raise ValueError(f"[BottomUpLognormalSABR] Segment beta not in [0,1]: {b_i} at Tend={Tend}, Ti={Ti}")
+            if nu_i < 0.0:
+                raise ValueError(f"[BottomUpLognormalSABR] Segment nu < 0: {nu_i} at Tend={Tend}, Ti={Ti}")
+            if not (-1.0 < rho_i < 1.0):
+                raise ValueError(f"[BottomUpLognormalSABR] Segment rho not in (-1,1): {rho_i} at Tend={Tend}, Ti={Ti}")
+
+            p = Hagan2002LognormalSABR(
+                f=float(self.f),
+                shift=float(self.shift),
+                t=float(Tend),
+                v_atm_n=v_n_i,
+                beta=b_i,
+                rho=rho_i,
+                volvol=nu_i,
+            )
+            a_i = float(p.alpha())
+            if not np.isfinite(a_i) or a_i <= 0.0:
+                raise ValueError(f"[BottomUpLognormalSABR] Segment alpha <= 0 or non-finite: {a_i} at Tend={Tend}, Ti={Ti}")
+
+            alphas.append(a_i)
+            betas.append(b_i)
+            nus.append(nu_i)
+            rhos.append(rho_i)
+
+        # Correlation aggregation
+        T_total = float(sum(Tis))  # equals total accrual length
+        gamma_1N = float(self._corr.corr(float(self._expiry), T_total))
+
+        if not np.isfinite(gamma_1N):
+            raise ValueError(f"[BottomUpLognormalSABR] gamma_1N is not finite: {gamma_1N}")
+        if not (0.0 <= gamma_1N <= 1.0):
+            raise ValueError(f"[BottomUpLognormalSABR] corr(expiry, T_total) must be in [0,1], got {gamma_1N}")
 
         N = len(Tis)
-        taus = np.cumsum([0.0] + Tis)
-        Gamma = np.zeros((N, N))
-        for i in range(N):
-            for j in range(N):
-                dt = abs(taus[i+1] - taus[j+1])
-                Gamma[i, j] = max(0.0, 1.0 - mu * dt)
-        gamma_bar = Gamma.mean()
+        if N <= 1:
+            gamma_bar = 1.0
+        else:
+            mu = (1.0 - gamma_1N) / (N - 1)
+            if not np.isfinite(mu) or mu < 0.0:
+                raise ValueError(f"[BottomUpLognormalSABR] Invalid mu={mu} from gamma_1N={gamma_1N}, N={N}")
 
-        alpha_star = np.sqrt(gamma_bar) * sum(w*alpha*np.sqrt(Ti/total)  for w,alpha,Ti in zip(weights,alphas, Tis))
-        beta_star = sum(w*b for w,b in zip(weights, betas))
-        nu_star = sum(w*nu*np.sqrt(Ti/total) for w,nu,Ti in zip(weights, nus,   Tis))
-        rho_star = (1/np.sqrt(gamma_bar)) * sum(w*rho for w,rho in zip(weights, rhos))
+            Gamma = np.zeros((N, N))
+            for i in range(N):
+                for j in range(N):
+                    dt = abs(i - j)
+                    val = 1.0 - mu * dt
+                    if val < 0.0:
+                        val = 0.0
+                    Gamma[i, j] = val
 
-        self.volvol = nu_star
-        self.rho    = rho_star
-        self.beta   = beta_star
-        self._alphaEff = alpha_star
+            gamma_bar = float(Gamma.mean())
+
+        if not np.isfinite(gamma_bar):
+            raise ValueError(f"[BottomUpLognormalSABR] gamma_bar is not finite: {gamma_bar}")
+        if gamma_bar <= 0.0 or gamma_bar > 1.0:
+            raise ValueError(f"[BottomUpLognormalSABR] gamma_bar must be in (0,1], got {gamma_bar}")
+
+        sqrt_g = float(np.sqrt(gamma_bar))
+
+        # Effective params
+        alpha_star = sqrt_g * sum(w * a * s for w, a, s in zip(weights, alphas, time_scales))
+        beta_star = sum(w * b for w, b in zip(weights, betas))
+        nu_star = sum(w * nu * s for w, nu, s in zip(weights, nus, time_scales))
+        rho_star = (1.0 / sqrt_g) * sum(w * r for w, r in zip(weights, rhos))
+
+        if not np.isfinite(alpha_star) or alpha_star <= 0.0:
+            raise ValueError(f"[BottomUpLognormalSABR] alpha_star invalid: {alpha_star}")
+        if not np.isfinite(nu_star) or nu_star < 0.0:
+            raise ValueError(f"[BottomUpLognormalSABR] nu_star invalid: {nu_star}")
+        if not (0.0 <= beta_star <= 1.0):
+            raise ValueError(f"[BottomUpLognormalSABR] beta_star must be in [0,1], got {beta_star}")
+        if not (-1.0 < rho_star < 1.0):
+            raise ValueError(f"[BottomUpLognormalSABR] rho_star must be in (-1,1), got {rho_star}")
+
+        self.volvol = float(nu_star)
+        self.rho = float(rho_star)
+        self.beta = float(beta_star)
+        self._alphaEff = float(alpha_star)
 
     def alpha(self):
         return self._alphaEff

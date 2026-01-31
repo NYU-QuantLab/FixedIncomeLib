@@ -283,14 +283,8 @@ class ProductOvernightCapFloor(Product):
         )
 
     def get_fixing_schedule(self) -> list[Date]:
-        mgr     = IndexManager.instance()
-        raw     = mgr.get_fixings(self.indexKey_, self.effDate_, self.endDate_)
-        fixing_qldates = sorted(raw.keys())
-        print(f"[ProductOvernightCapFloorlet] index={self.indexKey_}  eff={self.effDate_}  end={self.endDate_}")
-        print(f"    → raw fixings keys: {fixing_qldates!r}")
-        dates = [self.effDate_] + [Date(d) for d in fixing_qldates] + [self.endDate_]
-        print(f"    → final fixing‐schedule: {dates!r}")
-        return dates
+        cal = self.capStream.element(0).oisIndex_.fixingCalendar()
+        return business_day_schedule(self.effectiveDate, self.maturityDate, cal)
 
     @property
     def effectiveDate(self) -> Date:
@@ -344,6 +338,12 @@ class ProductIborSwaption(Product):
         rule: str         = 'BACKWARD',
         endOfMonth: bool  = False,
     ) -> None:
+        optionType = optionType.upper()
+        assert optionType in ("PAYER", "RECEIVER")
+
+        # Underlying swap direction must come from optionType (payer/receiver)
+        swap_position = "SHORT" if optionType == "PAYER" else "LONG"
+    
         self.underlyingSwap = ProductIborSwap(
             effectiveDate=swapStart,
             maturityDate=swapEnd,
@@ -352,7 +352,7 @@ class ProductIborSwaption(Product):
             spread=0.0,
             fixedRate=strikeRate,
             notional=notional,
-            position=longOrShort,
+            position=swap_position,
             holConv=holConv,
             bizConv=bizConv,
             accrualBasis=accrualBasis,
@@ -360,8 +360,8 @@ class ProductIborSwaption(Product):
             endOfMonth=endOfMonth,
         )
         self.expiryDate_ = Date(optionExpiry)
-        self.notional_  = notional
-        self.position_  = LongOrShort(longOrShort)
+        self.notional_   = notional
+        self.position_   = LongOrShort(longOrShort)
         self.optionType_ = optionType.upper()
         assert self.optionType_ in ("PAYER","RECEIVER")        
         super().__init__(
@@ -412,6 +412,11 @@ class ProductOvernightSwaption(Product):
         rule: str         = 'BACKWARD',
         endOfMonth: bool  = False,
     ) -> None:
+        optionType = optionType.upper()
+        assert optionType in ("PAYER", "RECEIVER")
+
+        # Underlying swap direction must come from optionType (payer/receiver)
+        swap_position = "SHORT" if optionType == "PAYER" else "LONG"
 
         self.underlyingSwap = ProductOvernightSwap(
             effectiveDate=swapStart,
@@ -421,7 +426,7 @@ class ProductOvernightSwaption(Product):
             spread=0.0,
             fixedRate=strikeRate,
             notional=notional,
-            position=longOrShort,
+            position=swap_position,
             holConv=holConv,
             bizConv=bizConv,
             accrualBasis=accrualBasis,

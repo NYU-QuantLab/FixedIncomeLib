@@ -12,8 +12,10 @@ class BusinessDayConvention:
             self.value_ = ql.ModifiedFollowing
         elif input.upper() == 'F':
             self.value_ = ql.Following
-        elif input.upper() == 'P' or input.upper() == 'NONE':
+        elif input.upper() == 'P':
             self.value_ = ql.Preceding
+        elif input.upper() == 'NONE':
+            self.value_ = ql.Unadjusted
         else:
             raise Exception(input + ' is not current supported business day convention.')
 
