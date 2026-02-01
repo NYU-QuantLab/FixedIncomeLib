@@ -1,3 +1,4 @@
+from re import S
 import pandas as pd
 from typing import List, Optional, Union
 import QuantLib as ql
@@ -393,6 +394,9 @@ class InterestRateStream(ProductPortfolio):
 
         if float_index is None and fixed_rate is None:
             raise Exception('Cannot have both floating index and fixed rate invalid.')
+        
+        self.float_index_ = float_index
+        self.fixed_rate_ = fixed_rate
 
         schedule = make_schedule(
             start_date=effective_date, 
@@ -439,12 +443,20 @@ class InterestRateStream(ProductPortfolio):
 
         super().__init__(products, weights)
 
+    @property
+    def float_index(self) -> Optional[str]:
+        return self.float_index_
+
+    @property
+    def fixed_rate(self) -> Optional[float]:
+        return self.fixed_rate_
+
     def cashflow(self, i: int) -> Product:
         return self.element(i)
     
     def num_cashflows(self) -> int:
         return self.num_elements_
-    
+       
 class ProductRFRSwap(Product):
 
     _version = 1
