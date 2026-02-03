@@ -288,60 +288,103 @@ class SabrModelComponent(ModelComponent):
     def _flat_index(self, i: int, j: int) -> int:
         return int(i) * int(len(self.axis2)) + int(j)
 
-    def weights(self, expiry: float, tenor: float) -> List[Tuple[int, float]]:
-        """
-        Bilinear interpolation weights at (expiry, tenor).
-        Returns list[(flat_idx, weight)] for the 4 surrounding grid nodes.
-        """
+    def weights(self, expiry: float, tenor: float):
         x = float(expiry)
         y = float(tenor)
 
-        # clamp
-        x = min(max(x, float(self.axis1[0])), float(self.axis1[-1]))
-        y = min(max(y, float(self.axis2[0])), float(self.axis2[-1]))
+        ax1 = np.asarray(self.axis1, dtype=float)
+        ax2 = np.asarray(self.axis2, dtype=float)
 
-        # cell indices
-        i = int(np.searchsorted(self.axis1, x) - 1)
-        j = int(np.searchsorted(self.axis2, y) - 1)
-        i = max(0, min(i, len(self.axis1) - 2))
-        j = max(0, min(j, len(self.axis2) - 2))
+        n1 = len(ax1)
+        n2 = len(ax2)
 
-        x1, x2 = float(self.axis1[i]), float(self.axis1[i + 1])
-        y1, y2 = float(self.axis2[j]), float(self.axis2[j + 1])
+        if n1 == 0 or n2 == 0:
+            raise ValueError("Empty SABR surface axes.")
 
-        # degenerate guards
-        if x2 == x1 and y2 == y1:
-            return [(self._flat_index(i, j), 1.0)]
-        if x2 == x1:
-            # linear in y
+        # ---- Degenerate cases: 1D/0D surfaces ----
+        if n1 == 1 and n2 == 1:
+            # only one node
+            return [(0, 1.0)]
+
+        if n2 == 1:
+            # expiry-only interpolation, tenor ignored (surface constant in tenor)
+            if n1 == 1:
+                return [(0, 1.0)]
+
+            i = int(np.searchsorted(ax1, x) - 1)
+            i = max(0, min(i, n1 - 2))
+
+            x1, x2 = float(ax1[i]), float(ax1[i + 1])
+            if x2 == x1:
+                # degenerate: collapse to nearest
+                ii = i if abs(x - x1) <= abs(x - x2) else i + 1
+                return [(ii * n2 + 0, 1.0)]
+
+            w2 = (x - x1) / (x2 - x1)
+            w2 = max(0.0, min(1.0, w2))
+            w1 = 1.0 - w2
+
+            # flat index = i*n2 + 0 (since n2==1)
+            return [(i * n2 + 0, w1), ((i + 1) * n2 + 0, w2)]
+
+        if n1 == 1:
+            # tenor-only interpolation, expiry ignored (surface constant in expiry)
+            j = int(np.searchsorted(ax2, y) - 1)
+            j = max(0, min(j, n2 - 2))
+
+            y1, y2 = float(ax2[j]), float(ax2[j + 1])
             if y2 == y1:
-                return [(self._flat_index(i, j), 1.0)]
-            w11 = (y2 - y) / (y2 - y1)
-            w12 = (y - y1) / (y2 - y1)
-            return [
-                (self._flat_index(i, j), float(w11)),
-                (self._flat_index(i, j + 1), float(w12)),
-            ]
-        if y2 == y1:
-            # linear in x
-            w11 = (x2 - x) / (x2 - x1)
-            w21 = (x - x1) / (x2 - x1)
-            return [
-                (self._flat_index(i, j), float(w11)),
-                (self._flat_index(i + 1, j), float(w21)),
-            ]
+                jj = j if abs(y - y1) <= abs(y - y2) else j + 1
+                return [(0 * n2 + jj, 1.0)]
 
-        den = (x2 - x1) * (y2 - y1)
-        w11 = (x2 - x) * (y2 - y) / den
-        w21 = (x - x1) * (y2 - y) / den
-        w12 = (x2 - x) * (y - y1) / den
-        w22 = (x - x1) * (y - y1) / den
+            w2 = (y - y1) / (y2 - y1)
+            w2 = max(0.0, min(1.0, w2))
+            w1 = 1.0 - w2
+
+            return [(0 * n2 + j, w1), (0 * n2 + (j + 1), w2)]
+
+        # ---- Standard 2D bilinear interpolation (your existing logic) ----
+        i = int(np.searchsorted(ax1, x) - 1)
+        j = int(np.searchsorted(ax2, y) - 1)
+
+        i = max(0, min(i, n1 - 2))
+        j = max(0, min(j, n2 - 2))
+
+        x1, x2 = float(ax1[i]), float(ax1[i + 1])
+        y1, y2 = float(ax2[j]), float(ax2[j + 1])
+
+        # guards
+        if x2 == x1 and y2 == y1:
+            return [(i * n2 + j, 1.0)]
+        if x2 == x1:
+            # linear in y only
+            wy2 = (y - y1) / (y2 - y1) if y2 != y1 else 0.0
+            wy2 = max(0.0, min(1.0, wy2))
+            wy1 = 1.0 - wy2
+            return [(i * n2 + j, wy1), (i * n2 + (j + 1), wy2)]
+        if y2 == y1:
+            # linear in x only
+            wx2 = (x - x1) / (x2 - x1) if x2 != x1 else 0.0
+            wx2 = max(0.0, min(1.0, wx2))
+            wx1 = 1.0 - wx2
+            return [(i * n2 + j, wx1), ((i + 1) * n2 + j, wx2)]
+
+        # bilinear
+        tx = (x - x1) / (x2 - x1)
+        ty = (y - y1) / (y2 - y1)
+        tx = max(0.0, min(1.0, tx))
+        ty = max(0.0, min(1.0, ty))
+
+        w11 = (1 - tx) * (1 - ty)
+        w21 = tx * (1 - ty)
+        w12 = (1 - tx) * ty
+        w22 = tx * ty
 
         return [
-            (self._flat_index(i, j), float(w11)),
-            (self._flat_index(i + 1, j), float(w21)),
-            (self._flat_index(i, j + 1), float(w12)),
-            (self._flat_index(i + 1, j + 1), float(w22)),
+            (i * n2 + j, w11),
+            ((i + 1) * n2 + j, w21),
+            (i * n2 + (j + 1), w12),
+            ((i + 1) * n2 + (j + 1), w22),
         ]
     
     def _sync_from_statevars(self) -> None:

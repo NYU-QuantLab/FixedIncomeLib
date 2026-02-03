@@ -220,7 +220,16 @@ class YieldCurve(Model):
         if not (end >= start >= self.valueDate_):
             raise AssertionError("start_time/end_time out of order or before value date.") 
         
-        accrual = float(accrued(start,end))
+        start_dt = Date(start)
+        end_dt   = Date(end)
+
+        if comp.isOvernightIndex_:
+            accrual = float(comp.targetIndex_.dayCounter().yearFraction(start_dt, end_dt))
+        else:
+            accrual = float(comp.targetIndex_.dayCounter().yearFraction(start_dt, end_dt))
+
+        if accrual <= 0.0:
+            raise ValueError(f"Non-positive accrual in forward gradient: {accrual}")
         pillar_times = np.asarray(comp.pillarsTimeToDate, dtype=float)
 
         grad = self.gradient_ if gradient is None else gradient

@@ -34,8 +34,10 @@ class ValuationEngineIborCapFloorlet(ValuationEngine):
         self.fundingIndex = valuation_parameters.get("FUNDING INDEX", self.product.index)
 
     def calculateValue(self) -> None:
-        expiry_t = accrued(self.valueDate, self.accrualStart)
-        tenor_t  = accrued(self.accrualStart, self.accrualEnd)
+
+        dc = self.product.dayCounter
+        expiry_t = float(dc.yearFraction(self.valueDate, self.accrualStart))
+        tenor_t  = float(self.product.accrualFactor)
 
         forward_rate    = self.yieldCurve.forward(self.product.index,self.accrualStart,self.accrualEnd)
         discount_factor = self.yieldCurve.discountFactor(self.fundingIndex, self.accrualEnd)
@@ -49,7 +51,7 @@ class ValuationEngineIborCapFloorlet(ValuationEngine):
             option_type = self.optionType,
         )
 
-        accrual_factor = accrued(self.accrualStart, self.accrualEnd)
+        accrual_factor = float(self.product.accrualFactor)
         pv = self.notional * discount_factor * accrual_factor * price *  self.buyOrSell
 
         self.value_ = [self.currencyCode, pv]
@@ -60,9 +62,10 @@ class ValuationEngineIborCapFloorlet(ValuationEngine):
                 if not accumulate:
                     self.model.clearGradient()
 
-        expiry_t = accrued(self.valueDate, self.accrualStart)
-        tenor_t  = accrued(self.accrualStart, self.accrualEnd)
-        accrual_factor = accrued(self.accrualStart, self.accrualEnd)
+        dc = self.product.dayCounter
+        expiry_t = float(dc.yearFraction(self.valueDate, self.accrualStart))
+        accrual_factor = float(self.product.accrualFactor)
+        tenor_t  = float(accrual_factor)
 
         forward_rate    = self.yieldCurve.forward(self.product.index, self.accrualStart,self.accrualEnd)
         discount_factor = self.yieldCurve.discountFactor(self.fundingIndex, self.accrualEnd)
@@ -128,8 +131,8 @@ class ValuationEngineIborCapFloorlet(ValuationEngine):
         # SABR pillar risk (NORMALVOL, BETA, NU, RHO)
         pvScale = float(scaler) * float(self.notional) * float(self.buyOrSell) * float(discount_factor) * float(accrual_factor)
 
-        # ---------------- NORMALVOL ----------------
-        dVol_dNormalVol = float(self.sabrCalc.dVol_dNormalVol(
+        # NORMALVOL 
+        dVol_dNormalVol = self.sabrCalc.dVol_dNormalVol(
             index     = self.product.index,
             expiry    = expiry_t,
             tenor     = tenor_t,
@@ -141,7 +144,7 @@ class ValuationEngineIborCapFloorlet(ValuationEngine):
             rho       = rho,
             shift     = shift,
             decay     = decay
-        ))
+        )
         
         accumulate_surface_pillar_risk(
             model=self.model,
@@ -156,8 +159,8 @@ class ValuationEngineIborCapFloorlet(ValuationEngine):
             product_type_for_scalar=None
         )
 
-        # ---------------- BETA ----------------
-        dVol_dBeta = float(self.sabrCalc.dVol_dBeta(
+        #  BETA 
+        dVol_dBeta = self.sabrCalc.dVol_dBeta(
             index     = self.product.index,
             expiry    = expiry_t,
             tenor     = tenor_t,
@@ -169,7 +172,7 @@ class ValuationEngineIborCapFloorlet(ValuationEngine):
             rho       = rho,
             shift     = shift,
             decay     = decay
-        ))
+        )
         accumulate_surface_pillar_risk(
             model=self.model,
             gradient=gradient,
@@ -183,8 +186,8 @@ class ValuationEngineIborCapFloorlet(ValuationEngine):
             product_type_for_scalar=None
         )
 
-        # ---------------- NU ----------------
-        dVol_dNu = float(self.sabrCalc.dVol_dNu(
+        #  NU 
+        dVol_dNu = self.sabrCalc.dVol_dNu(
             index     = self.product.index,
             expiry    = expiry_t,
             tenor     = tenor_t,
@@ -196,7 +199,7 @@ class ValuationEngineIborCapFloorlet(ValuationEngine):
             rho       = rho,
             shift     = shift,
             decay     = decay
-        ))
+        )
         accumulate_surface_pillar_risk(
             model=self.model,
             gradient=gradient,
@@ -210,8 +213,8 @@ class ValuationEngineIborCapFloorlet(ValuationEngine):
             product_type_for_scalar=None
         )
 
-        # ---------------- RHO ----------------
-        dVol_dRho = float(self.sabrCalc.dVol_dRho(
+        #  RHO 
+        dVol_dRho = self.sabrCalc.dVol_dRho(
             index     = self.product.index,
             expiry    = expiry_t,
             tenor     = tenor_t,
@@ -223,7 +226,7 @@ class ValuationEngineIborCapFloorlet(ValuationEngine):
             rho       = rho,
             shift     = shift,
             decay     = decay
-        ))
+        )
         accumulate_surface_pillar_risk(
             model=self.model,
             gradient=gradient,
@@ -270,8 +273,11 @@ class ValuationEngineOvernightCapFloorlet(ValuationEngine):
         self.fundingIndex = valuation_parameters.get("FUNDING INDEX", self.product.index)
 
     def calculateValue(self) -> None:
-        expiry_t = accrued(self.valueDate, self.accrualStart)        
-        tenor_t  = accrued(self.accrualStart, self.accrualEnd)
+        
+        dc = self.product.dayCounter
+        expiry_t = float(dc.yearFraction(self.valueDate, self.accrualStart))
+        tenor_t  = float(self.product.accrualFactor)
+
 
         forward_rate    = self.yieldCurve.forward(
             self.product.index,
@@ -289,7 +295,7 @@ class ValuationEngineOvernightCapFloorlet(ValuationEngine):
             option_type = self.optionType,
         )
 
-        accrual_factor = accrued(self.accrualStart, self.accrualEnd)
+        accrual_factor = self.product.accrualFactor
         pv = self.notional * discount_factor * accrual_factor * price *  self.buyOrSell
 
         self.value_ = [self.currencyCode, pv]
@@ -300,9 +306,10 @@ class ValuationEngineOvernightCapFloorlet(ValuationEngine):
             if not accumulate:
                 self.model.clearGradient()
 
-        expiry_t = accrued(self.valueDate, self.accrualStart)
-        tenor_t  = accrued(self.accrualStart, self.accrualEnd)
-        accrual_factor = accrued(self.accrualStart, self.accrualEnd)
+        dc = self.product.dayCounter
+        expiry_t = float(dc.yearFraction(self.valueDate, self.accrualStart))
+        accrual_factor = self.product.accrualFactor
+        tenor_t  = float(self.product.accrualFactor)
 
         forward_rate = self.yieldCurve.forward(
             self.product.index,
@@ -327,7 +334,7 @@ class ValuationEngineOvernightCapFloorlet(ValuationEngine):
             product_type=self.prod_flag
         )
 
-        # ---------------- Yield curve risk: DF + forward ----------------
+        #  Yield curve risk: DF + forward 
         numCurveParams = int(np.asarray(self.yieldCurve.getGradientArray()).size)
         curveGradient  = gradient[:numCurveParams]
 
@@ -376,7 +383,7 @@ class ValuationEngineOvernightCapFloorlet(ValuationEngine):
             accumulate=True
         )
 
-        # ---------------- SABR pillar risk (NORMALVOL, BETA, NU, RHO) ----------------
+        #  SABR pillar risk (NORMALVOL, BETA, NU, RHO) 
         pvScale = (
             float(scaler)
             * float(self.notional)
@@ -385,8 +392,8 @@ class ValuationEngineOvernightCapFloorlet(ValuationEngine):
             * float(accrual_factor)
         )
 
-        # -------- NORMALVOL --------
-        dVol_dNormalVol = float(self.sabrCalc.dVol_dNormalVol(
+        #  NORMALVOL 
+        dVol_dNormalVol = self.sabrCalc.dVol_dNormalVol(
             index     = self.product.index,
             expiry    = expiry_t,
             tenor     = tenor_t,
@@ -398,7 +405,7 @@ class ValuationEngineOvernightCapFloorlet(ValuationEngine):
             rho       = rho,
             shift     = shift,
             decay     = decay
-        ))
+        )
         accumulate_surface_pillar_risk(
             model=self.model,
             gradient=gradient,
@@ -412,8 +419,8 @@ class ValuationEngineOvernightCapFloorlet(ValuationEngine):
             product_type_for_scalar=self.prod_flag
         )
 
-        # -------- BETA --------
-        dVol_dBeta = float(self.sabrCalc.dVol_dBeta(
+        #  BETA 
+        dVol_dBeta = self.sabrCalc.dVol_dBeta(
             index     = self.product.index,
             expiry    = expiry_t,
             tenor     = tenor_t,
@@ -425,7 +432,7 @@ class ValuationEngineOvernightCapFloorlet(ValuationEngine):
             rho       = rho,
             shift     = shift,
             decay     = decay
-        ))
+        )
         accumulate_surface_pillar_risk(
             model=self.model,
             gradient=gradient,
@@ -439,8 +446,8 @@ class ValuationEngineOvernightCapFloorlet(ValuationEngine):
             product_type_for_scalar=self.prod_flag
         )
 
-        # -------- NU --------
-        dVol_dNu = float(self.sabrCalc.dVol_dNu(
+        #  NU 
+        dVol_dNu = self.sabrCalc.dVol_dNu(
             index     = self.product.index,
             expiry    = expiry_t,
             tenor     = tenor_t,
@@ -452,7 +459,7 @@ class ValuationEngineOvernightCapFloorlet(ValuationEngine):
             rho       = rho,
             shift     = shift,
             decay     = decay
-        ))
+        )
         accumulate_surface_pillar_risk(
             model=self.model,
             gradient=gradient,
@@ -466,8 +473,8 @@ class ValuationEngineOvernightCapFloorlet(ValuationEngine):
             product_type_for_scalar=self.prod_flag
         )
 
-        # -------- RHO --------
-        dVol_dRho = float(self.sabrCalc.dVol_dRho(
+        #  RHO 
+        dVol_dRho = self.sabrCalc.dVol_dRho(
             index     = self.product.index,
             expiry    = expiry_t,
             tenor     = tenor_t,
@@ -479,7 +486,7 @@ class ValuationEngineOvernightCapFloorlet(ValuationEngine):
             rho       = rho,
             shift     = shift,
             decay     = decay
-        ))
+        )
         accumulate_surface_pillar_risk(
             model=self.model,
             gradient=gradient,
@@ -606,8 +613,9 @@ class ValuationEngineIborSwaption(ValuationEngine):
         self.optionFlag    = 'CAP'   if self.optionType == 'PAYER' else 'FLOOR'
 
     def calculateValue(self) -> None:
-        t_exp = accrued(self.valueDate, self.expiry)
-        t_ten = accrued(self.swap.firstDate, self.swap.lastDate)
+        dc = self.product.dayCounter 
+        t_exp = float(dc.yearFraction(self.valueDate, self.expiry))
+        t_ten = float(dc.yearFraction(self.swap.firstDate, self.swap.lastDate))
 
         ir_vp = {"FUNDING INDEX": self.swap.index}
         ir_engine = ValuationEngineRegistry().new_valuation_engine(self.yieldCurve, ir_vp, self.swap)
@@ -634,11 +642,12 @@ class ValuationEngineIborSwaption(ValuationEngine):
             if not accumulate:
                 self.model.clearGradient()
 
-        # ---------- times ----------
-        t_exp = accrued(self.valueDate, self.expiry)
-        t_ten = accrued(self.swap.firstDate, self.swap.lastDate)
+        #times
+        dc = self.product.dayCounter
+        t_exp = float(dc.yearFraction(self.valueDate, self.expiry))
+        t_ten = float(dc.yearFraction(self.swap.firstDate, self.swap.lastDate))
 
-        # ---------- build swap engine on YC to get forward + annuity ----------
+        #  build swap engine on YC to get forward + annuity
         ir_vp = {"FUNDING INDEX": self.swap.index}
         ir_engine = ValuationEngineRegistry().new_valuation_engine(self.yieldCurve, ir_vp, self.swap)
         ir_engine.calculateValue()
@@ -662,7 +671,7 @@ class ValuationEngineIborSwaption(ValuationEngine):
         swap_annuity = abs(swap_annuity_signed)
         sign_annuity = 1.0 if swap_annuity_signed > 0.0 else -1.0
 
-        # ---------- SABR price + greeks ----------
+        #  SABR price + greeks 
         price = float(self.sabrCalc.option_price(
             index       = self.swap.index,
             expiry      = t_exp,
@@ -696,11 +705,11 @@ class ValuationEngineIborSwaption(ValuationEngine):
 
         dPrice_dForward_total = float(dPrice_dForward) + float(dPrice_dVol) * float(dVol_dForward)
 
-        # ---------- curve slice ----------
+        #  curve slice 
         numCurveParams = int(np.asarray(self.yieldCurve.getGradientArray()).size)
         curveGradient  = gradient[:numCurveParams]
 
-        # ---------- build fixed-leg and float-leg engines ----------
+        #  build fixed-leg and float-leg engines 
         fixed_leg_engine = ValuationEngineRegistry().new_valuation_engine(self.yieldCurve, ir_vp, self.swap.fixedLeg)
         float_leg_engine = ValuationEngineRegistry().new_valuation_engine(self.yieldCurve, ir_vp, self.swap.floatingLeg)
 
@@ -712,13 +721,12 @@ class ValuationEngineIborSwaption(ValuationEngine):
         _, pv_float_check = float_leg_engine.value_
         pv_float_check = float(pv_float_check)
 
-        # if ir_engine provided cached legs, use them; else fall back to the checks
         if pv_fixed == 0.0 and pv_fixed_check != 0.0:
             pv_fixed = pv_fixed_check
         if pv_float == 0.0 and pv_float_check != 0.0:
             pv_float = pv_float_check
 
-        # ---------- gradients for PV_fixed and PV_float wrt curve params ----------
+        #  gradients for PV_fixed and PV_float wrt curve params 
         g_pv_fixed = np.zeros(numCurveParams, dtype=float)
         g_pv_float = np.zeros(numCurveParams, dtype=float)
 
@@ -758,26 +766,21 @@ class ValuationEngineIborSwaption(ValuationEngine):
 
             eng.calculateFirstOrderRisk(gradient=g_pv_float, scaler=1.0, accumulate=True)
 
-        # ---------- convert leg PV risks -> annuity/par-rate risks ----------
-        # A = PV_fixed / (K * N)
+        #  convert leg PV risks -> annuity/par-rate risks 
         dA_dCurve_signed = g_pv_fixed / (float(self.strikeRate) * swap_notional)
         dA_dCurve = sign_annuity * dA_dCurve_signed
 
-        # F = - PV_float / (N * A)
-        # dF = -(1/(N*A)) dPV_float + (PV_float/(N*A^2)) dA
         dF_dCurve = -(1.0 / (swap_notional * swap_annuity_signed)) * g_pv_float + (pv_float / (swap_notional * swap_annuity_signed * swap_annuity_signed)) * dA_dCurve_signed
 
-        # ---------- push curve risk into global gradient ----------
-        # PV = notional * buyOrSell * ( A * price(F) )
-        # dPV_curve = notional*buyOrSell * [ price*dA + A*dPrice_dF_total*dF ]
+        #  push curve risk into global gradient 
         curve_scale = float(scaler) * float(self.notional) * float(self.buyOrSell)
         curveGradient += curve_scale * (price * dA_dCurve + swap_annuity * dPrice_dForward_total * dF_dCurve)
 
-        # ---------- SABR pillar risks ----------
+        #  SABR pillar risks 
         pvScale = float(scaler) * float(self.notional) * float(self.buyOrSell) * float(swap_annuity)
 
         # NORMALVOL
-        dVol_dNormalVol = float(self.sabrCalc.dVol_dNormalVol(
+        dVol_dNormalVol = self.sabrCalc.dVol_dNormalVol(
             index     = self.swap.index,
             expiry    = t_exp,
             tenor     = t_ten,
@@ -789,7 +792,7 @@ class ValuationEngineIborSwaption(ValuationEngine):
             rho       = rho,
             shift     = shift,
             decay     = decay
-        ))
+        )
         accumulate_surface_pillar_risk(
             model=self.model,
             gradient=gradient,
@@ -804,7 +807,7 @@ class ValuationEngineIborSwaption(ValuationEngine):
         )
 
         # BETA
-        dVol_dBeta = float(self.sabrCalc.dVol_dBeta(
+        dVol_dBeta = self.sabrCalc.dVol_dBeta(
             index     = self.swap.index,
             expiry    = t_exp,
             tenor     = t_ten,
@@ -816,7 +819,7 @@ class ValuationEngineIborSwaption(ValuationEngine):
             rho       = rho,
             shift     = shift,
             decay     = decay
-        ))
+        )
         accumulate_surface_pillar_risk(
             model=self.model,
             gradient=gradient,
@@ -831,7 +834,7 @@ class ValuationEngineIborSwaption(ValuationEngine):
         )
 
         # NU
-        dVol_dNu = float(self.sabrCalc.dVol_dNu(
+        dVol_dNu = self.sabrCalc.dVol_dNu(
             index     = self.swap.index,
             expiry    = t_exp,
             tenor     = t_ten,
@@ -843,7 +846,7 @@ class ValuationEngineIborSwaption(ValuationEngine):
             rho       = rho,
             shift     = shift,
             decay     = decay
-        ))
+        )
         accumulate_surface_pillar_risk(
             model=self.model,
             gradient=gradient,
@@ -858,7 +861,7 @@ class ValuationEngineIborSwaption(ValuationEngine):
         )
 
         # RHO
-        dVol_dRho = float(self.sabrCalc.dVol_dRho(
+        dVol_dRho = self.sabrCalc.dVol_dRho(
             index     = self.swap.index,
             expiry    = t_exp,
             tenor     = t_ten,
@@ -870,7 +873,7 @@ class ValuationEngineIborSwaption(ValuationEngine):
             rho       = rho,
             shift     = shift,
             decay     = decay
-        ))
+        )
         accumulate_surface_pillar_risk(
             model=self.model,
             gradient=gradient,
@@ -916,8 +919,9 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
         self.optionFlag = 'CAP'   if self.optionType == 'PAYER' else 'FLOOR'
 
     def calculateValue(self) -> None:
-        t_exp = accrued(self.valueDate, self.expiry)
-        t_ten = accrued(self.swap.firstDate, self.swap.lastDate)
+        dc = self.product.dayCounter
+        t_exp = float(dc.yearFraction(self.valueDate, self.expiry))
+        t_ten = float(dc.yearFraction(self.swap.firstDate, self.swap.lastDate))
 
         ir_vp = {"FUNDING INDEX": self.swap.index}
         ir_engine = ValuationEngineRegistry().new_valuation_engine(self.yieldCurve, ir_vp, self.swap)
@@ -944,11 +948,12 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
             if not accumulate:
                 self.model.clearGradient()
 
-        # ---------- times ----------
-        t_exp = accrued(self.valueDate, self.expiry)
-        t_ten = accrued(self.swap.firstDate, self.swap.lastDate)
+        #  times 
+        dc = self.product.dayCounter
+        t_exp = float(dc.yearFraction(self.valueDate, self.expiry))
+        t_ten = float(dc.yearFraction(self.swap.firstDate, self.swap.lastDate))
 
-        # ---------- swap engine (YC) for forward + annuity ----------
+        #  swap engine (YC) for forward + annuity 
         ir_vp = {"FUNDING INDEX": self.swap.index}
         ir_engine = ValuationEngineRegistry().new_valuation_engine(self.yieldCurve, ir_vp, self.swap)
         ir_engine.calculateValue()
@@ -971,7 +976,7 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
         swap_annuity = abs(swap_annuity_signed)
         sign_annuity = 1.0 if swap_annuity_signed > 0.0 else -1.0
 
-        # ---------- SABR price + greeks ----------
+        #  SABR price + greeks 
         price = float(self.sabrCalc.option_price(
             index       = self.swap.index,
             expiry      = t_exp,
@@ -1005,11 +1010,11 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
 
         dPrice_dForward_total = float(dPrice_dForward) + float(dPrice_dVol) * float(dVol_dForward)
 
-        # ---------- curve slice ----------
+        #  curve slice 
         numCurveParams = int(np.asarray(self.yieldCurve.getGradientArray()).size)
         curveGradient  = gradient[:numCurveParams]
 
-        # ---------- fixed + floating leg engines ----------
+        #  fixed + floating leg engines 
         fixed_leg_engine = ValuationEngineRegistry().new_valuation_engine(self.yieldCurve, ir_vp, self.swap.fixedLeg)
         float_leg_engine = ValuationEngineRegistry().new_valuation_engine(self.yieldCurve, ir_vp, self.swap.floatingLeg)
 
@@ -1026,7 +1031,7 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
         if pv_float == 0.0 and pv_float_check != 0.0:
             pv_float = pv_float_check
 
-        # ---------- gradients for PV_fixed and PV_float wrt curve params ----------
+        #  gradients for PV_fixed and PV_float wrt curve params 
         g_pv_fixed = np.zeros(numCurveParams, dtype=float)
         g_pv_float = np.zeros(numCurveParams, dtype=float)
 
@@ -1064,28 +1069,24 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
 
             eng.calculateFirstOrderRisk(gradient=g_pv_float, scaler=1.0, accumulate=True)
 
-        # ---------- convert leg PV risks -> annuity/par-rate risks ----------
-        # A = PV_fixed / (K * N)
+        #  convert leg PV risks -> annuity/par-rate risks
         dA_dCurve_signed = g_pv_fixed / (float(self.strikeRate) * swap_notional)
         dA_dCurve = sign_annuity * dA_dCurve_signed
 
-        # F = - PV_float / (N * A)
         dF_dCurve = (
             -(1.0 / (swap_notional * swap_annuity_signed)) * g_pv_float
             + (pv_float / (swap_notional * swap_annuity_signed * swap_annuity_signed)) * dA_dCurve_signed
         )
 
-        # ---------- push curve risk into global gradient ----------
-        # PV = notional * buyOrSell * [ A * price(F) ]
-        # dPV_curve = notional*buyOrSell * [ price*dA + A*dPrice_dF_total*dF ]
+        #  push curve risk into global gradient 
         curve_scale = float(scaler) * float(self.notional) * float(self.buyOrSell)
         curveGradient += curve_scale * (price * dA_dCurve + swap_annuity * dPrice_dForward_total * dF_dCurve)
 
-        # ---------- SABR pillar risks ----------
+        #  SABR pillar risks 
         pvScale = float(scaler) * float(self.notional) * float(self.buyOrSell) * float(swap_annuity)
 
         # NORMALVOL
-        dVol_dNormalVol = float(self.sabrCalc.dVol_dNormalVol(
+        dVol_dNormalVol = self.sabrCalc.dVol_dNormalVol(
             index     = self.swap.index,
             expiry    = t_exp,
             tenor     = t_ten,
@@ -1097,7 +1098,7 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
             rho       = rho,
             shift     = shift,
             decay     = decay
-        ))
+        )
         accumulate_surface_pillar_risk(
             model=self.model,
             gradient=gradient,
@@ -1112,7 +1113,7 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
         )
 
         # BETA
-        dVol_dBeta = float(self.sabrCalc.dVol_dBeta(
+        dVol_dBeta = self.sabrCalc.dVol_dBeta(
             index     = self.swap.index,
             expiry    = t_exp,
             tenor     = t_ten,
@@ -1124,7 +1125,7 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
             rho       = rho,
             shift     = shift,
             decay     = decay
-        ))
+        )
         accumulate_surface_pillar_risk(
             model=self.model,
             gradient=gradient,
@@ -1139,7 +1140,7 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
         )
 
         # NU
-        dVol_dNu = float(self.sabrCalc.dVol_dNu(
+        dVol_dNu = self.sabrCalc.dVol_dNu(
             index     = self.swap.index,
             expiry    = t_exp,
             tenor     = t_ten,
@@ -1151,7 +1152,7 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
             rho       = rho,
             shift     = shift,
             decay     = decay
-        ))
+        )
         accumulate_surface_pillar_risk(
             model=self.model,
             gradient=gradient,
@@ -1166,7 +1167,7 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
         )
 
         # RHO
-        dVol_dRho = float(self.sabrCalc.dVol_dRho(
+        dVol_dRho = self.sabrCalc.dVol_dRho(
             index     = self.swap.index,
             expiry    = t_exp,
             tenor     = t_ten,
@@ -1178,7 +1179,7 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
             rho       = rho,
             shift     = shift,
             decay     = decay
-        ))
+        )
         accumulate_surface_pillar_risk(
             model=self.model,
             gradient=gradient,

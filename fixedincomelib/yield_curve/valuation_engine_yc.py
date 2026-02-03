@@ -39,7 +39,7 @@ class ValuationEngineProductBulletCashflow(ValuationEngine):
                                                                     gradient=gradient,
                                                                     scaler=scale,
                                                                     accumulate=accumulate)
-            self.firstOrderRisk_ = self.model.getGradientArray()
+            self.firstOrderRisk_ = gradient
 
 # ValuationEngineRegistry().insert(
 #     YieldCurve.modelType,
@@ -570,8 +570,7 @@ class ValuationEngineProductFuture(ValuationEngine):
                                                          scaler = scale_fwd,
                                                          accumulate = True)
         
-        self.firstOrderRisk_ = self.model.getGradientArray()
-
+        self.firstOrderRisk_ = gradient
 # ValuationEngineRegistry().insert(
 #     YieldCurve.modelType,
 #     ProductFuture.prodType,
@@ -647,7 +646,7 @@ class ValuationEngineProductRfrFuture(ValuationEngine):
                                                          scaler = scale_fwd,
                                                          accumulate = True)
         
-        self.firstOrderRisk_ = self.model.getGradientArray()
+        self.firstOrderRisk_ = gradient
 
 # ValuationEngineRegistry().insert(
 #     YieldCurve.modelType,
@@ -767,7 +766,7 @@ class ValuationEngineInterestRateStream(ValuationEngine):
         else:
             self._float_engine.calculateFirstOrderRisk(gradient=gradient, scaler=scaler, accumulate=True)
                         
-        self.firstOrderRisk_ = self.model.getGradientArray()
+        self.firstOrderRisk_ = gradient
 
 
 # # register for both IBOR and OIS swaps

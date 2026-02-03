@@ -10,9 +10,19 @@ def addPeriod(start_date : str, term : str, biz_conv : Optional[str]='NONE', hol
     return Date(this_cal.advance(Date(start_date), Period(term), BusinessDayConvention(biz_conv).value, endOfMonth))
 
 def accrued(start_dt : str, end_date : str, accrual_basis : Optional[str]='NONE', biz_conv : Optional[str]='NONE', hol_conv : Optional[str]='NONE'):
-    # in case end date falls on non-business day
-    adjusted_end_dt = moveToBusinessDay(end_date, biz_conv, hol_conv) 
-    return AccrualBasis(accrual_basis).value.yearFraction(Date(start_dt), adjusted_end_dt)
+    d0 = Date(start_dt)
+    d1_raw = Date(end_date)
+
+    d1 = d1_raw
+    if biz_conv is not None and str(biz_conv).upper() != "NONE":
+        d1_adj = moveToBusinessDay(d1_raw, biz_conv, hol_conv)
+
+        if d1_adj.serialNumber() > d0.serialNumber():
+            d1 = d1_adj
+        else:
+            d1 = d1_raw
+
+    return AccrualBasis(accrual_basis).value.yearFraction(d0, d1)
 
 def moveToBusinessDay(input_date : str, biz_conv : str, hol_conv : str):
     return Date(HolidayConvention(hol_conv).value.adjust(Date(input_date), BusinessDayConvention(biz_conv).value))

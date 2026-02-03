@@ -22,8 +22,6 @@ class ProductIborCapFloorlet(Product):
         notional: float,
         longOrShort: str,
     ) -> None:
-        self.accrualStart_ = Date(startDate)
-        self.accrualEnd_ = Date(endDate)
         self.optionType_ = optionType.upper()
         assert self.optionType_ in ("CAP", "FLOOR"), f"Invalid option type: {optionType}"
         self.indexKey_ = index
@@ -31,7 +29,20 @@ class ProductIborCapFloorlet(Product):
         tenor = tokenized[-1]
         indexName = '-'.join(tokenized[:-1])
         self.iborIndex_ = IndexRegistry().get(indexName, tenor)
+        cal = self.iborIndex_.fixingCalendar()
+        bdc = self.iborIndex_.businessDayConvention()
+        self.accrualStart_ = Date(cal.adjust(Date(startDate), bdc))
+        self.accrualEnd_   = Date(cal.adjust(Date(endDate),   bdc))
         self.strike_ = strike
+
+        dc = self.iborIndex_.dayCounter()
+        self.accrualFactor_ = float(dc.yearFraction(self.accrualStart_, self.accrualEnd_))
+        if self.accrualFactor_ <= 0.0:
+            raise ValueError(
+                f"Non-positive accrualFactor for IBOR caplet: "
+                f"{self.accrualStart_} -> {self.accrualEnd_}, tau={self.accrualFactor_}"
+            )
+
         ccy_code = self.iborIndex_.currency().code()
         super().__init__(
             self.accrualStart_, self.accrualEnd_, notional, longOrShort, Currency(ccy_code)
@@ -56,10 +67,17 @@ class ProductIborCapFloorlet(Product):
     @property
     def index(self) -> str:
         return self.indexKey_
+    
+    @property
+    def accrualFactor(self) -> float:
+        return float(self.accrualFactor_)
+    
+    @property
+    def dayCounter(self):
+        return self.iborIndex_.dayCounter()
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
-
 
 class ProductOvernightCapFloorlet(Product):
     prodType = "ProductOvernightCapFloorlet"
@@ -75,25 +93,41 @@ class ProductOvernightCapFloorlet(Product):
         notional: float,
         longOrShort: str,
     ) -> None:
-        self.effDate_ = Date(effectiveDate)
         self.indexKey_ = index
         self.oisIndex_ = IndexRegistry().get(index)
         self.optionType_ = optionType.upper()
         assert self.optionType_ in ("CAP", "FLOOR"), f"Invalid option type: {optionType}"
         self.compounding_ = compounding.upper()
         self.strike_ = strike
+        cal = self.oisIndex_.fixingCalendar()
+        bdc = self.oisIndex_.businessDayConvention()
+        self.effDate_ = Date(cal.adjust(Date(effectiveDate), bdc))
         if isinstance(termOrEnd, Date):
-            self.endDate_ = termOrEnd
-        else:
-            to = TermOrTerminationDate(termOrEnd)
-            cal = self.oisIndex_.fixingCalendar()
+            end_raw = termOrEnd
+        elif isinstance(termOrEnd, TermOrTerminationDate):
+            to = termOrEnd
             if to.isTerm():
                 tenor = to.getTerm()
-                self.endDate_ = Date(
-                    cal.advance(self.effDate_, tenor, self.oisIndex_.businessDayConvention())
-                )
+                end_raw = Date(cal.advance(self.effDate_, tenor, bdc))
             else:
-                self.endDate_ = to.getDate()
+                end_raw = to.getDate()
+        else:
+            to = TermOrTerminationDate(termOrEnd)
+            if to.isTerm():
+                tenor = to.getTerm()
+                end_raw = Date(cal.advance(self.effDate_, tenor, bdc))
+            else:
+                end_raw = to.getDate()
+
+        self.endDate_ = Date(cal.adjust(end_raw, bdc))
+        dc = self.oisIndex_.dayCounter()
+        self.accrualFactor_ = float(dc.yearFraction(self.effDate_, self.endDate_))
+        if self.accrualFactor_ <= 0.0:
+            raise ValueError(
+                f"Non-positive accrualFactor for OIS caplet: "
+                f"{self.effDate_} -> {self.endDate_}, tau={self.accrualFactor_}"
+            )
+
         ccy_code = self.oisIndex_.currency().code()
         super().__init__(
             self.effDate_, self.endDate_, notional, longOrShort, Currency(ccy_code)
@@ -130,6 +164,14 @@ class ProductOvernightCapFloorlet(Product):
     @property
     def fixing_schedule(self) -> list[Date]:
         return self.get_fixing_schedule()
+    
+    @property
+    def dayCounter(self):
+        return self.oisIndex_.dayCounter()
+
+    @property
+    def accrualFactor(self) -> float:
+        return float(self.accrualFactor_)
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
@@ -363,6 +405,7 @@ class ProductIborSwaption(Product):
         self.notional_   = notional
         self.position_   = LongOrShort(longOrShort)
         self.optionType_ = optionType.upper()
+        self.iborIndex_  = IndexRegistry().get(iborIndex)
         assert self.optionType_ in ("PAYER","RECEIVER")        
         super().__init__(
             self.expiryDate_,
@@ -387,10 +430,14 @@ class ProductIborSwaption(Product):
     @property
     def optionType(self) -> str:
         return self.optionType_
+    
+    @property
+    def dayCounter(self):
+        return self.iborIndex_.dayCounter()
+
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
-
 
 class ProductOvernightSwaption(Product):
     prodType = "ProductOvernightSwaption"
@@ -437,6 +484,7 @@ class ProductOvernightSwaption(Product):
         self.notional_  = notional
         self.position_  = LongOrShort(longOrShort)
         self.optionType_ = optionType.upper()
+        self.oisIndex_ = IndexRegistry().get(overnightIndex)
         assert self.optionType_ in ("PAYER","RECEIVER")
         super().__init__(
             self.expiryDate_,
@@ -461,6 +509,10 @@ class ProductOvernightSwaption(Product):
     @property
     def optionType(self) -> str:
         return self.optionType_
+    
+    @property
+    def dayCounter(self):
+        return self.oisIndex_.dayCounter()
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)

@@ -79,7 +79,7 @@ class SABRCalculator:
                 volvol=nu,
             )
             strike_to_price = strike
-
+        
         cp = "call" if option_type.upper() == "CAP" else "put"
         if hasattr(sabr_pricer, "call"):
             return float(sabr_pricer.call(strike_to_price, cp=cp))
