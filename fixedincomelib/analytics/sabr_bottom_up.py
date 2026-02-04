@@ -41,11 +41,7 @@ class BottomUpLognormalSABR(Hagan2002LognormalSABR):
         if dates is None or len(dates) < 2:
             raise ValueError("[BottomUpLognormalSABR] product fixing schedule must have at least 2 dates.")
         
-        if self._product.oisIndex_ is not None:
-            dc = self._product.oisIndex_.dayCounter()
-        else:
-            dc = ql.Actual360()
-
+        dc = self._product.dayCounter
         Tis = [float(dc.yearFraction(d0, d1)) for d0, d1 in zip(dates, dates[1:])]
         if any((not np.isfinite(Ti)) for Ti in Tis):
             raise ValueError(f"[BottomUpLognormalSABR] Non-finite accruals in Tis: {Tis}")

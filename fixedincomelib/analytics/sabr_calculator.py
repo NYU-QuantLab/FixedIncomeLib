@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
+import QuantLib as ql
 from pysabr import Hagan2002LognormalSABR
+from pysabr.models.hagan_2002_lognormal_sabr import lognormal_vol
 from pysabr import black
 from fixedincomelib.sabr import SabrModel
 from fixedincomelib.analytics.sabr_top_down import TimeDecayLognormalSABR
@@ -80,7 +82,13 @@ class SABRCalculator:
             )
             strike_to_price = strike
         
-        cp = "call" if option_type.upper() == "CAP" else "put"
+        ot = option_type.upper()
+        if ot in ("CAP", "CAPLET"):
+            cp = "call"
+        elif ot in ("FLOOR", "FLOORLET"):
+            cp = "put"
+        else:
+            raise ValueError(f"Unknown option_type={option_type}")
         if hasattr(sabr_pricer, "call"):
             return float(sabr_pricer.call(strike_to_price, cp=cp))
         raise AttributeError(f"No compatible call-price method on pricer {type(sabr_pricer)}")
@@ -174,7 +182,15 @@ class SABRCalculator:
         sqrt_time = np.sqrt(time_to_expiry)
         d1 = (np.log(forward_shifted / strike_shifted)+ 0.5 * shifted_lognormal_vol * shifted_lognormal_vol * time_to_expiry) / (shifted_lognormal_vol * sqrt_time)
 
-        dPrice_dForward = float(norm.cdf(d1)) if option_type.upper() == "CAP" else float(norm.cdf(d1) - 1.0)
+        ot = option_type.upper()
+        if ot in ("CAP", "CAPLET"):
+            is_call = True
+        elif ot in ("FLOOR", "FLOORLET"):
+            is_call = False
+        else:
+            raise ValueError(f"Unknown option_type={option_type}")
+
+        dPrice_dForward = float(norm.cdf(d1)) if is_call else float(norm.cdf(d1) - 1.0)
         dPrice_dVol     = float(forward_shifted * norm.pdf(d1) * sqrt_time)
 
         # Hagan: dsigma/dF partial (alpha const) AND dsigma/dalpha
@@ -214,23 +230,29 @@ class SABRCalculator:
         dz_dF     = (nu / alpha) * (dsqrt_fkbeta_dF * log_forward_over_strike + sqrt_fkbeta * dlog_forward_over_strike_dF)
         dz_dalpha = -z / alpha
 
-        sqrt_term = np.sqrt(1.0 - 2.0 * rho * z + z * z)
-        x = np.log((sqrt_term + z - rho) / (1.0 - rho))
-        dx_dz     = 1.0 / sqrt_term
-        dx_dF     = dx_dz * dz_dF
-        dx_dalpha = dx_dz * dz_dalpha
-
         if abs(z) > eps:
-            Numer = alpha * z * H
-            Denom = sqrt_fkbeta * Q * x
+            sqrt_term = float(np.sqrt(1.0 - 2.0 * rho * z + z * z))
+            Ax = float(sqrt_term + z - rho)
+            Bx = float(1.0 - rho)
+            if sqrt_term <= 0.0 or Ax <= 0.0 or Bx <= 0.0:
+                dsigma_dF_partial = 0.0
+                dsigma_dalpha = 0.0
+            else:
+                x = float(np.log(Ax / Bx))
+                dx_dz     = float(1.0 / sqrt_term)
+                dx_dF     = float(dx_dz * dz_dF)
+                dx_dalpha = float(dx_dz * dz_dalpha)
 
-            dNumer_dF = alpha * dz_dF * H + alpha * z * dH_dF
-            dDenom_dF = dsqrt_fkbeta_dF * Q * x + sqrt_fkbeta * dQ_dF * x + sqrt_fkbeta * Q * dx_dF
-            dsigma_dF_partial = 0.0 if abs(Denom) <= 1e-18 else float((dNumer_dF * Denom - Numer * dDenom_dF) / (Denom * Denom))
+                Numer = alpha * z * H
+                Denom = sqrt_fkbeta * Q * x
 
-            dNumer_dalpha = alpha * z * dH_dalpha
-            dDenom_dalpha = sqrt_fkbeta * Q * dx_dalpha
-            dsigma_dalpha = 0.0 if abs(Denom) <= 1e-18 else float((dNumer_dalpha * Denom - Numer * dDenom_dalpha) / (Denom * Denom))
+                dNumer_dF = alpha * dz_dF * H + alpha * z * dH_dF
+                dDenom_dF = dsqrt_fkbeta_dF * Q * x + sqrt_fkbeta * dQ_dF * x + sqrt_fkbeta * Q * dx_dF
+                dsigma_dF_partial = 0.0 if abs(Denom) <= 1e-18 else float((dNumer_dF * Denom - Numer * dDenom_dF) / (Denom * Denom))
+
+                dNumer_dalpha = alpha * z * dH_dalpha
+                dDenom_dalpha = sqrt_fkbeta * Q * dx_dalpha
+                dsigma_dalpha = 0.0 if abs(Denom) <= 1e-18 else float((dNumer_dalpha * Denom - Numer * dDenom_dalpha) / (Denom * Denom))
         else:
             Numer = alpha * H
             Denom = sqrt_fkbeta * Q
@@ -286,100 +308,120 @@ class SABRCalculator:
                 dalpha_dF = float(c * dalpha_base_dF)
 
         elif self.method == "bottom-up":
-            from fixedincomelib.date.utilities import accrued
 
             dates = self.product.get_fixing_schedule()
-            Tis   = [accrued(d0, d1) for d0, d1 in zip(dates, dates[1:])]
-            total = sum(Tis)
-            if total <= 0.0:
+            if dates is None or len(dates) < 2:
                 dalpha_dF = 0.0
             else:
-                weights = [Ti / total for Ti in Tis]
-                offsets = np.cumsum([0.0] + Tis[:-1])
-                Tstarts = [expiry + x for x in offsets]
-                Te = sum(w * T for w, T in zip(weights, Tstarts))
-                Te = float(Te)
-
-                if not np.isfinite(Te) or Te <= 0.0:
-                    raise ValueError(
-                        f"[bottom-up] invalid Te={Te}. Check expiry={expiry}, tenor={tenor}, "
-                        f"Tstarts(min,max)=({min(Tstarts)}, {max(Tstarts)}), total={total}."
-                    )
-
-                if any((not np.isfinite(T) or T <= 0.0) for T in Tstarts):
-                    bad = [T for T in Tstarts if (not np.isfinite(T) or T <= 0.0)]
-                    raise ValueError(
-                        f"[bottom-up] invalid Tstarts (<=0 or non-finite): {bad}. expiry={expiry}, tenor={tenor}."
-                    )
-
-                time_scales = [np.sqrt(T / Te) for T in Tstarts]
-                T_total = sum(Tis)
-                gamma_1N = self.corr_surf.corr(expiry, T_total)
-
-                N = len(Tis)
-                if N <= 1:
-                    gamma_bar = 1.0
+                dc = self.product.dayCounter
+                Tis = [float(dc.yearFraction(d0, d1)) for d0, d1 in zip(dates, dates[1:])]
+                total = float(sum(Tis))
+                if total <= 0.0:
+                    dalpha_dF = 0.0
                 else:
-                    mu = (1.0 - gamma_1N) / (N - 1)
-                    Gamma = np.zeros((N, N))
-                    for i in range(N):
-                        for j in range(N):
-                            dt = abs(i - j)
-                            Gamma[i, j] = max(0.0, 1.0 - mu * dt)
-                    gamma_bar = float(Gamma.mean())
+                    weights = [float(Ti / total) for Ti in Tis]
 
-                dalpha_eff_dF = 0.0
-                for w, s, Ti, Tstart in zip(weights, time_scales, Tis, Tstarts):
-                    v_n_i, b_i, nu_i, rho_i, _, _ = self.model.get_sabr_parameters(
-                        index=index,
-                        expiry=Tstart,
-                        tenor=Ti,
-                        product_type=None
-                    )
+                    offsets = np.cumsum([0.0] + Tis[:-1])
+                    Tstarts = [float(expiry) + float(x) for x in offsets]
+                    Tends   = [Ts + Ti for Ts, Ti in zip(Tstarts, Tis)]
 
-                    seg_pricer = Hagan2002LognormalSABR(
-                        f=forward,
-                        shift=shift,
-                        t=Tstart,
-                        v_atm_n=v_n_i,
-                        beta=b_i,
-                        rho=rho_i,
-                        volvol=nu_i,
-                    )
-                    alpha_i = float(seg_pricer.alpha())
-                    if alpha_i <= 0.0 or Tstart <= 0.0:
-                        continue
+                    use_end_time = (getattr(self.product, "oisIndex_", None) is not None)
+                    Texp = Tends if use_end_time else Tstarts
 
-                    atm_sigma_ln = float(black.normal_to_shifted_lognormal(forward, forward, shift, Tstart, v_n_i))
-                    if atm_sigma_ln <= 0.0:
-                        continue
+                    # validate segment times
+                    if any((not np.isfinite(T) or T <= 0.0) for T in Texp):
+                        dalpha_dF = 0.0
+                    else:
+                        Tbar = float(sum(w * T for w, T in zip(weights, Texp)))
+                        if not np.isfinite(Tbar) or Tbar <= 0.0:
+                            dalpha_dF = 0.0
+                        else:
+                            time_scales = [float(np.sqrt(T / Tbar)) for T in Texp]
 
-                    sqrt_ti = np.sqrt(Tstart)
-                    atm_x = 0.5 * atm_sigma_ln * sqrt_ti
-                    atm_phi = norm.pdf(atm_x)
-                    atm_A = 2.0 * norm.cdf(atm_x) - 1.0
-                    datm_sigma_ln_dF = 0.0 if atm_phi <= 0.0 else float(-atm_A / (forward_shifted * atm_phi * sqrt_ti))
+                            # CONSISTENT corr convention: corr(Texp[0], Texp[-1])
+                            gamma_1N = float(self.corr_surf.corr(float(Texp[0]), float(Texp[-1])))
 
-                    one_minus_beta_i = 1.0 - b_i
-                    f_power_i = forward_shifted ** (b_i - 1.0)
+                            N = len(Tis)
+                            if N <= 1:
+                                gamma_bar = 1.0
+                            else:
+                                mu = (1.0 - gamma_1N) / (N - 1)
+                                ssum = 0.0
+                                for d in range(N):
+                                    val = 1.0 - mu * d
+                                    if val < 0.0:
+                                        val = 0.0
+                                    cnt = N if d == 0 else 2.0 * (N - d)
+                                    ssum += cnt * val
+                                gamma_bar = float(ssum / (N * N))
 
-                    a3 = Tstart * (f_power_i ** 3) * (one_minus_beta_i ** 2) / 24.0
-                    a2 = Tstart * (f_power_i ** 2) * (rho_i * b_i * nu_i) / 4.0
-                    a1 = (1.0 + Tstart * (nu_i ** 2) * (2.0 - 3.0 * rho_i * rho_i) / 24.0) * f_power_i
-                    a0 = -atm_sigma_ln
+                            sqrt_g = float(np.sqrt(gamma_bar))
 
-                    da3_dF = a3 * (3.0 * (b_i - 1.0) / forward_shifted)
-                    da2_dF = a2 * (2.0 * (b_i - 1.0) / forward_shifted)
-                    da1_dF = a1 * ((b_i - 1.0) / forward_shifted)
-                    da0_dF = -datm_sigma_ln_dF
+                            dalpha_eff_dF = 0.0
+                            for Ti, Te, w, s in zip(Tis, Texp, weights, time_scales):
 
-                    dP_dalpha = 3.0 * a3 * alpha_i * alpha_i + 2.0 * a2 * alpha_i + a1
-                    dP_dF     = da3_dF * (alpha_i ** 3) + da2_dF * (alpha_i ** 2) + da1_dF * alpha_i + da0_dF
-                    dalpha_i_dF = 0.0 if abs(dP_dalpha) <= 1e-18 else float(-dP_dF / dP_dalpha)
+                                v_n_i, b_i, nu_i, rho_i, _, _ = self.model.get_sabr_parameters(
+                                    index=index,
+                                    expiry=float(Te),
+                                    tenor=float(Ti),
+                                    product_type=None,
+                                )
 
-                    dalpha_eff_dF += w * s * dalpha_i_dF
+                                seg_pricer = Hagan2002LognormalSABR(
+                                    f=float(forward),
+                                    shift=float(shift),
+                                    t=float(Te),
+                                    v_atm_n=float(v_n_i),
+                                    beta=float(b_i),
+                                    rho=float(rho_i),
+                                    volvol=float(nu_i),
+                                )
+                                alpha_i = float(seg_pricer.alpha())
+                                if alpha_i <= 0.0:
+                                    continue
 
-                dalpha_dF = float(np.sqrt(gamma_bar) * dalpha_eff_dF)
+                                atm_sigma_ln = float(
+                                    black.normal_to_shifted_lognormal(forward, forward, shift, float(Te), float(v_n_i))
+                                )
+                                if atm_sigma_ln <= 0.0:
+                                    continue
+
+                                sqrt_t = float(np.sqrt(Te))
+                                atm_x = 0.5 * atm_sigma_ln * sqrt_t
+                                atm_phi = float(norm.pdf(atm_x))
+                                atm_A = float(2.0 * norm.cdf(atm_x) - 1.0)
+                                datm_sigma_ln_dF = 0.0 if atm_phi <= 0.0 else float(
+                                    -atm_A / (forward_shifted * atm_phi * sqrt_t)
+                                )
+
+                                one_minus_beta_i = 1.0 - float(b_i)
+                                f_power_i = float(forward_shifted ** (float(b_i) - 1.0))
+
+                                a3 = float(Te * (f_power_i ** 3) * (one_minus_beta_i ** 2) / 24.0)
+                                a2 = float(Te * (f_power_i ** 2) * (float(rho_i) * float(b_i) * float(nu_i)) / 4.0)
+                                a1 = float(
+                                    (1.0 + Te * (float(nu_i) ** 2) * (2.0 - 3.0 * float(rho_i) * float(rho_i)) / 24.0)
+                                    * f_power_i
+                                )
+                                a0 = float(-atm_sigma_ln)
+
+                                da3_dF = float(a3 * (3.0 * (float(b_i) - 1.0) / forward_shifted))
+                                da2_dF = float(a2 * (2.0 * (float(b_i) - 1.0) / forward_shifted))
+                                da1_dF = float(a1 * ((float(b_i) - 1.0) / forward_shifted))
+                                da0_dF = float(-datm_sigma_ln_dF)
+
+                                dP_dalpha = float(3.0 * a3 * alpha_i * alpha_i + 2.0 * a2 * alpha_i + a1)
+                                if abs(dP_dalpha) <= 1e-18:
+                                    continue
+
+                                dP_dF = float(
+                                    da3_dF * (alpha_i ** 3) + da2_dF * (alpha_i ** 2) + da1_dF * alpha_i + da0_dF
+                                )
+                                dalpha_i_dF = float(-dP_dF / dP_dalpha)
+
+                                dalpha_eff_dF += float(w * s * dalpha_i_dF)
+
+                            dalpha_dF = float(sqrt_g * dalpha_eff_dF)
 
         else:
             # Plain Hagan
@@ -488,102 +530,89 @@ class SABRCalculator:
 
         # BOTTOM-UP
         if self.method == "bottom-up":
+
             if self.corr_surf is None:
                 raise ValueError("corr_surf must be provided for bottom-up method")
             if self.product is None:
                 raise ValueError("product must be provided for bottom-up method")
 
-            from fixedincomelib.date.utilities import accrued
-
             dates = self.product.get_fixing_schedule()
-            Tis = [accrued(d0, d1) for d0, d1 in zip(dates, dates[1:])]
-            total = float(sum(Tis))
-            if total <= 0.0:
+            if dates is None or len(dates) < 2:
                 return []
 
+            dc = self.product.dayCounter
+
+            Tis = [float(dc.yearFraction(d0, d1)) for d0, d1 in zip(dates, dates[1:])]
+            if any(Ti <= 0.0 for Ti in Tis):
+                raise ValueError(f"[bottom-up] non-positive segment accruals: {Tis}")
+
+            total = float(sum(Tis))
             weights = [float(Ti / total) for Ti in Tis]
-            offsets = np.cumsum([0.0] + Tis[:-1])
-            Tstarts = [float(expiry + x) for x in offsets]
 
-            Te = float(sum(w * Tst for w, Tst in zip(weights, Tstarts)))
+            offsets_start = np.cumsum([0.0] + Tis[:-1])
+            Tstarts = [float(expiry) + float(x) for x in offsets_start]
+            Tends   = [Ts + Ti for Ts, Ti in zip(Tstarts, Tis)]
 
-            if not np.isfinite(Te) or Te <= 0.0:
-                raise ValueError(
-                    f"[bottom-up] invalid Te={Te}. Check expiry={expiry}, tenor={tenor}, "
-                    f"Tstarts(min,max)=({min(Tstarts)}, {max(Tstarts)}), total={total}."
-                )
+            use_end_time = (getattr(self.product, "oisIndex_", None) is not None)
+            Texp = Tends if use_end_time else Tstarts
 
-            if any((not np.isfinite(Tst) or Tst <= 0.0) for Tst in Tstarts):
-                bad = [Tst for Tst in Tstarts if (not np.isfinite(Tst) or Tst <= 0.0)]
-                raise ValueError(f"[bottom-up] invalid Tstarts (<=0 or non-finite): {bad}.")
+            Tbar = float(sum(w * T for w, T in zip(weights, Texp)))
+            if Tbar <= 0.0 or not np.isfinite(Tbar):
+                raise ValueError(f"[bottom-up] invalid Tbar={Tbar}")
 
-            time_scales = [float(np.sqrt(Tst / Te)) for Tst in Tstarts]
+            time_scales = [float(np.sqrt(T / Tbar)) for T in Texp]
 
-
-            T_total = float(sum(Tis))
-            gamma_1N = float(self.corr_surf.corr(expiry, T_total))
+            t_first = float(Texp[0])
+            t_last  = float(Texp[-1])
+            gamma_1N = float(self.corr_surf.corr(t_first, t_last))
 
             N = len(Tis)
             if N <= 1:
                 gamma_bar = 1.0
             else:
-                mu = float((1.0 - gamma_1N) / (N - 1))
-                Gamma = np.zeros((N, N))
-                for i in range(N):
-                    for j in range(N):
-                        dt = abs(i - j)
-                        Gamma[i, j] = max(0.0, 1.0 - mu * dt)
-                gamma_bar = float(Gamma.mean())
+                mu = (1.0 - gamma_1N) / (N - 1)
+                s = 0.0
+                for d in range(N):
+                    val = 1.0 - mu * d
+                    if val < 0.0:
+                        val = 0.0
+                    cnt = N if d == 0 else 2.0 * (N - d)
+                    s += cnt * val
+                gamma_bar = float(s / (N * N))
 
-            pref = float(np.sqrt(gamma_bar))
+            sqrt_g = float(np.sqrt(gamma_bar))
+
             out = []
+            h = 1e-6
 
-            for w, s, Ti, Tst in zip(weights, time_scales, Tis, Tstarts):
-                Tst = float(Tst)
-                Ti = float(Ti)
-                if Tst <= 0.0:
-                    continue
-
-                vn_i, b_i, nu_i, rho_i, _, _ = self.model.get_sabr_parameters(
-                    index=index, expiry=Tst, tenor=Ti, product_type=None
+            for Ti, Te, w_i, s_i in zip(Tis, Texp, weights, time_scales):
+                v_n_i, b_i, nu_i, rho_i, _, _ = self.model.get_sabr_parameters(
+                    index=index,
+                    expiry=float(Te),
+                    tenor=float(Ti),
+                    product_type= None,
                 )
-                vn_i = float(vn_i); b_i = float(b_i); nu_i = float(nu_i); rho_i = float(rho_i)
 
-                pr_i = Hagan2002LognormalSABR(
-                    f=forward,
-                    shift=shift,
-                    t=Tst,
-                    v_atm_n=vn_i,
-                    beta=b_i,
-                    rho=rho_i,
-                    volvol=nu_i,
+                v_n_i = float(v_n_i)
+                b_i   = float(b_i)
+                nu_i  = float(nu_i)
+                rho_i = float(rho_i)
+
+                pr_plus = Hagan2002LognormalSABR(
+                    f=float(forward), shift=float(shift), t=float(Te),
+                    v_atm_n=v_n_i + h, beta=b_i, rho=rho_i, volvol=nu_i
                 )
-                alpha_i = float(pr_i.alpha())
-                if alpha_i <= 0.0:
-                    continue
+                pr_minus = Hagan2002LognormalSABR(
+                    f=float(forward), shift=float(shift), t=float(Te),
+                    v_atm_n=v_n_i - h, beta=b_i, rho=rho_i, volvol=nu_i
+                )
 
-                sig_ln_atm_i = float(black.normal_to_shifted_lognormal(forward, forward, shift, Tst, vn_i))
-                if sig_ln_atm_i <= 0.0:
-                    continue
+                a_plus = float(pr_plus.alpha())
+                a_minus = float(pr_minus.alpha())
 
-                x_i = 0.5 * sig_ln_atm_i * np.sqrt(Tst)
-                dsigln_dvn_i = float(np.exp(0.5 * x_i * x_i) / Fp)
+                dalpha_i_dvn = float((a_plus - a_minus) / (2.0 * h))
 
-                one_minus_beta_i = 1.0 - b_i
-                f_power_i = float(Fp ** (b_i - 1.0))
-
-                a3 = float(Tst * (f_power_i ** 3) * (one_minus_beta_i ** 2) / 24.0)
-                a2 = float(Tst * (f_power_i ** 2) * (rho_i * b_i * nu_i) / 4.0)
-                a1 = float((1.0 + Tst * (nu_i ** 2) * (2.0 - 3.0 * rho_i * rho_i) / 24.0) * f_power_i)
-
-                dP_dalpha = float(3.0 * a3 * alpha_i * alpha_i + 2.0 * a2 * alpha_i + a1)
-                if abs(dP_dalpha) <= 1e-18:
-                    continue
-
-                dalpha_i_dvn = float(dsigln_dvn_i / dP_dalpha)
-                dAlphaStar_dVn_i = float(pref * w * s * dalpha_i_dvn)
-
-                out.append((Tst, Ti, dAlphaStar_dVn_i))
+                out.append((float(Te), float(Ti), float(sqrt_g * w_i * s_i * dalpha_i_dvn)))
 
             return out
 
@@ -743,8 +772,7 @@ class SABRCalculator:
             dDenom_dalpha = float(sqrt_fkbeta * Q * dx_dalpha)
 
             dsigma_dalpha = 0.0 if abs(Denom) <= 1e-18 else float(
-                (dNumer_dalpha * Denom - Numer * dDenom_dalpha) / (Denom * Denom)
-            )
+                (dNumer_dalpha * Denom - Numer * dDenom_dalpha) / (Denom * Denom))
         else:
             Denom = float(sqrt_fkbeta * Q)
             dsigma_dalpha = 0.0 if abs(Denom) <= 1e-18 else float((H + alpha * dH_dalpha) / Denom)
@@ -768,8 +796,8 @@ class SABRCalculator:
 
         # bottom-up
         out = []
-        for Tst, Ti, dAlphaStar_dVn_i in dalpha_dvn:
-            out.append((float(Tst), float(Ti), float(dsigma_dalpha) * float(dAlphaStar_dVn_i)))
+        for Te, Ti, dAlphaStar_dVn_i in dalpha_dvn:
+            out.append((float(Te), float(Ti), float(dsigma_dalpha) * float(dAlphaStar_dVn_i)))
         return out
 
 
@@ -973,82 +1001,108 @@ class SABRCalculator:
 
         # BOTTOM-UP
         if self.method == "bottom-up":
-            from fixedincomelib.date.utilities import accrued
 
             dates = self.product.get_fixing_schedule()
-            Tis = [accrued(d0, d1) for d0, d1 in zip(dates, dates[1:])]
+            if dates is None or len(dates) < 2:
+                return []
+
+            dc = self.product.dayCounter
+
+            Tis = [float(dc.yearFraction(d0, d1)) for d0, d1 in zip(dates, dates[1:])]
             total = float(sum(Tis))
             if total <= 0.0:
                 return []
 
             weights = [float(Ti / total) for Ti in Tis]
             offsets = np.cumsum([0.0] + Tis[:-1])
-            Tstarts = [float(expiry + x) for x in offsets]
+            Tstarts = [float(expiry) + float(x) for x in offsets]
+            Tends   = [Ts + Ti for Ts, Ti in zip(Tstarts, Tis)]
 
-            Te = float(sum(w * Tst for w, Tst in zip(weights, Tstarts)))
+            use_end_time = (getattr(self.product, "oisIndex_", None) is not None)
+            Texp = Tends if use_end_time else Tstarts
 
-            if not np.isfinite(Te) or Te <= 0.0:
-                raise ValueError(
-                    f"[bottom-up] invalid Te={Te}. Check expiry={expiry}, tenor={tenor}, "
-                    f"Tstarts(min,max)=({min(Tstarts)}, {max(Tstarts)}), total={total}."
-                )
+            Tbar = float(sum(w * T for w, T in zip(weights, Texp)))
+            time_scales = [float(np.sqrt(T / Tbar)) for T in Texp]
 
-            if any((not np.isfinite(Tst) or Tst <= 0.0) for Tst in Tstarts):
-                bad = [Tst for Tst in Tstarts if (not np.isfinite(Tst) or Tst <= 0.0)]
-                raise ValueError(f"[bottom-up] invalid Tstarts (<=0 or non-finite): {bad}.")
+            t_first = float(Texp[0])
+            t_last  = float(Texp[-1])
+            gamma_1N = float(self.corr_surf.corr(t_first, t_last))
 
-            time_scales = [float(np.sqrt(Tst / Te)) for Tst in Tstarts]
-
-
-            T_total = float(sum(Tis))
-            gamma_1N = float(self.corr_surf.corr(expiry, T_total))
             N = len(Tis)
             if N <= 1:
                 gamma_bar = 1.0
             else:
-                mu = float((1.0 - gamma_1N) / (N - 1))
-                Gamma = np.zeros((N, N))
-                for i in range(N):
-                    for j in range(N):
-                        dt = abs(i - j)
-                        Gamma[i, j] = max(0.0, 1.0 - mu * dt)
-                gamma_bar = float(Gamma.mean())
+                mu = (1.0 - gamma_1N) / (N - 1)
+                s = 0.0
+                for d in range(N):
+                    val = 1.0 - mu * d
+                    if val < 0.0:
+                        val = 0.0
+                    cnt = N if d == 0 else 2.0 * (N - d)
+                    s += cnt * val
+                gamma_bar = float(s / (N * N))
 
-            pref = float(np.sqrt(gamma_bar))
+            sqrt_g = float(np.sqrt(gamma_bar))
 
-            out = []
-            for w, s, Ti, Tst in zip(weights, time_scales, Tis, Tstarts):
-                Tst = float(Tst)
-                Ti  = float(Ti)
-                if Tst <= 0.0:
-                    continue
-
+            # Build base segment params + segment alphas
+            vns, bs, nus, rhos, alphas = [], [], [], [], []
+            for Ti, Te in zip(Tis, Texp):
                 vn_i, b_i, nu_i, rho_i, _, _ = self.model.get_sabr_parameters(
-                    index=index, expiry=Tst, tenor=Ti, product_type=None
+                    index=index, expiry=float(Te), tenor=float(Ti), product_type=None
                 )
-                vn_i  = float(vn_i)
-                b_i   = float(b_i)
-                nu_i  = float(nu_i)
-                rho_i = float(rho_i)
+                vn_i = float(vn_i); b_i = float(b_i); nu_i = float(nu_i); rho_i = float(rho_i)
 
-                pr_i = Hagan2002LognormalSABR(
-                    f=forward,
-                    shift=shift,
-                    t=Tst,
-                    v_atm_n=vn_i,
-                    beta=b_i,
-                    rho=rho_i,
-                    volvol=nu_i,
+                pr = Hagan2002LognormalSABR(
+                    f=float(forward), shift=float(shift), t=float(Te),
+                    v_atm_n=vn_i, beta=b_i, rho=rho_i, volvol=nu_i
                 )
-                alpha_i = float(pr_i.alpha())
-                if alpha_i <= 0.0:
-                    continue
 
-                dBetaStar_dBeta_i = float(w)
-                dalpha_i_dbeta_i = _dalpha_dbeta_from_atm(alpha_i, Tst, vn_i, b_i, rho_i, nu_i)
-                dAlphaStar_dBeta_i = float(pref * w * s * dalpha_i_dbeta_i)
-                dSigma_dBeta_i = float(dsigma_dbeta_partial * dBetaStar_dBeta_i + dsigma_dalpha * dAlphaStar_dBeta_i)
-                out.append((Tst, Ti, dSigma_dBeta_i))
+                vns.append(vn_i); bs.append(b_i); nus.append(nu_i); rhos.append(rho_i)
+                alphas.append(float(pr.alpha()))
+
+            alpha_star = float(sqrt_g * sum(w * a * s for w, a, s in zip(weights, alphas, time_scales)))
+            beta_star  = float(sum(w * b for w, b in zip(weights, bs)))
+            nu_star    = float(sum(w * nu * s for w, nu, s in zip(weights, nus, time_scales)))
+            rho_star   = float((1.0 / sqrt_g) * sum(w * r for w, r in zip(weights, rhos)))
+
+            # Use same Teff as pricer does (sabr_pricer.t)
+            Teff = float(sabr_pricer.t)
+            Fp = float(forward + shift)
+            Kp = float(strike + shift)
+
+            h = 1e-4
+            out = []
+            for i, (Ti, Te, w_i, s_i) in enumerate(zip(Tis, Texp, weights, time_scales)):
+                b0 = bs[i]
+
+                b_plus = min(1.0, b0 + h)
+                b_minus = max(0.0, b0 - h)
+
+                pr_plus = Hagan2002LognormalSABR(
+                    f=float(forward), shift=float(shift), t=float(Te),
+                    v_atm_n=vns[i], beta=b_plus, rho=rhos[i], volvol=nus[i]
+                )
+                pr_minus = Hagan2002LognormalSABR(
+                    f=float(forward), shift=float(shift), t=float(Te),
+                    v_atm_n=vns[i], beta=b_minus, rho=rhos[i], volvol=nus[i]
+                )
+
+                a_plus = float(pr_plus.alpha())
+                a_minus = float(pr_minus.alpha())
+
+                alpha_plus = alpha_star + sqrt_g * w_i * s_i * (a_plus - alphas[i])
+                alpha_minus = alpha_star + sqrt_g * w_i * s_i * (a_minus - alphas[i])
+
+                beta_plus = beta_star + w_i * (b_plus - b0)
+                beta_minus = beta_star + w_i * (b_minus - b0)
+
+                sig_plus = float(lognormal_vol(Kp, Fp, Teff, alpha_plus, beta_plus, rho_star, nu_star))
+                sig_minus = float(lognormal_vol(Kp, Fp, Teff, alpha_minus, beta_minus, rho_star, nu_star))
+
+                denom = (b_plus - b_minus)
+                dSig = (sig_plus - sig_minus) / denom if abs(denom) > 0.0 else 0.0
+
+                out.append((float(Te), float(Ti), float(dSig)))
 
             return out
 
@@ -1257,93 +1311,114 @@ class SABRCalculator:
 
         # BOTTOM-UP
         if self.method == "bottom-up":
-            from fixedincomelib.date.utilities import accrued
 
             dates = self.product.get_fixing_schedule()
-            Tis = [accrued(d0, d1) for d0, d1 in zip(dates, dates[1:])]
+            if dates is None or len(dates) < 2:
+                return []
+
+            dc = self.product.dayCounter
+
+            Tis = [float(dc.yearFraction(d0, d1)) for d0, d1 in zip(dates, dates[1:])]
             total = float(sum(Tis))
-            if total <= 0.0:
+            if total <= 0.0 or any(Ti <= 0.0 for Ti in Tis):
                 return []
 
             weights = [float(Ti / total) for Ti in Tis]
             offsets = np.cumsum([0.0] + Tis[:-1])
-            Tstarts = [float(expiry + x) for x in offsets]
+            Tstarts = [float(expiry) + float(x) for x in offsets]
+            Tends   = [Ts + Ti for Ts, Ti in zip(Tstarts, Tis)]
 
-            Te = float(sum(w * Tst for w, Tst in zip(weights, Tstarts)))
+            use_end_time = (getattr(self.product, "oisIndex_", None) is not None)
+            Texp = Tends if use_end_time else Tstarts
 
-            if not np.isfinite(Te) or Te <= 0.0:
-                raise ValueError(
-                    f"[bottom-up] invalid Te={Te}. Check expiry={expiry}, tenor={tenor}, "
-                    f"Tstarts(min,max)=({min(Tstarts)}, {max(Tstarts)}), total={total}."
-                )
+            Tbar = float(sum(w * T for w, T in zip(weights, Texp)))
+            if not np.isfinite(Tbar) or Tbar <= 0.0:
+                return []
 
-            if any((not np.isfinite(Tst) or Tst <= 0.0) for Tst in Tstarts):
-                bad = [Tst for Tst in Tstarts if (not np.isfinite(Tst) or Tst <= 0.0)]
-                raise ValueError(f"[bottom-up] invalid Tstarts (<=0 or non-finite): {bad}.")
+            time_scales = [float(np.sqrt(T / Tbar)) for T in Texp]
 
-            time_scales = [float(np.sqrt(Tst / Te)) for Tst in Tstarts]
+            t_first = float(Texp[0])
+            t_last  = float(Texp[-1])
+            gamma_1N = float(self.corr_surf.corr(t_first, t_last))
 
-            T_total = float(sum(Tis))
-            gamma_1N = float(self.corr_surf.corr(expiry, T_total))
             N = len(Tis)
             if N <= 1:
                 gamma_bar = 1.0
             else:
-                mu = float((1.0 - gamma_1N) / (N - 1))
-                Gamma = np.zeros((N, N))
-                for i in range(N):
-                    for j in range(N):
-                        dt = abs(i - j)
-                        Gamma[i, j] = max(0.0, 1.0 - mu * dt)
-                gamma_bar = float(Gamma.mean())
+                mu = (1.0 - gamma_1N) / (N - 1)
+                s = 0.0
+                for d in range(N):
+                    val = 1.0 - mu * d
+                    if val < 0.0:
+                        val = 0.0
+                    cnt = N if d == 0 else 2.0 * (N - d)
+                    s += cnt * val
+                gamma_bar = float(s / (N * N))
 
-            pref = float(np.sqrt(gamma_bar))
+            sqrt_g = float(np.sqrt(gamma_bar))
+            if not (0.0 < sqrt_g <= 1.0):
+                return []
 
-            out = []
-            for w, s, Ti, Tst in zip(weights, time_scales, Tis, Tstarts):
-                Tst = float(Tst)
-                Ti  = float(Ti)
-                if Tst <= 0.0:
-                    continue
-
+            # Base segment params + segment alphas
+            vns, bs, nus, rhos, alphas = [], [], [], [], []
+            for Ti, Te in zip(Tis, Texp):
                 vn_i, b_i, nu_i, rho_i, _, _ = self.model.get_sabr_parameters(
-                    index=index, expiry=Tst, tenor=Ti, product_type=None
+                    index=index, expiry=float(Te), tenor=float(Ti), product_type=None
                 )
-                vn_i  = float(vn_i)
-                b_i   = float(b_i)
-                nu_i  = float(nu_i)
-                rho_i = float(rho_i)
+                vn_i = float(vn_i); b_i = float(b_i); nu_i = float(nu_i); rho_i = float(rho_i)
 
-                pr_i = Hagan2002LognormalSABR(
-                    f=forward, shift=shift, t=Tst,
+                pr = Hagan2002LognormalSABR(
+                    f=float(forward), shift=float(shift), t=float(Te),
                     v_atm_n=vn_i, beta=b_i, rho=rho_i, volvol=nu_i
                 )
-                alpha_i = float(pr_i.alpha())
-                if alpha_i <= 0.0:
-                    continue
 
-                dNuStar_dNu_i = float(w * s)
-                f_power_i = float(Fp ** (b_i - 1.0))
-                c_rho_i = float(2.0 - 3.0 * rho_i * rho_i)
-                g_i = float(1.0 + Tst * (nu_i ** 2) * c_rho_i / 24.0)
+                vns.append(vn_i); bs.append(b_i); nus.append(nu_i); rhos.append(rho_i)
+                alphas.append(float(pr.alpha()))
 
-                a3 = float(Tst * (f_power_i ** 3) * ((1.0 - b_i) ** 2) / 24.0)
-                a2 = float(Tst * (f_power_i ** 2) * (rho_i * b_i * nu_i) / 4.0)
-                a1 = float(g_i * f_power_i)
+            alpha_star = float(sqrt_g * sum(w * a * s for w, a, s in zip(weights, alphas, time_scales)))
+            beta_star  = float(sum(w * b for w, b in zip(weights, bs)))
+            nu_star    = float(sum(w * nu * s for w, nu, s in zip(weights, nus, time_scales)))
+            rho_star   = float((1.0 / sqrt_g) * sum(w * r for w, r in zip(weights, rhos)))
 
-                dP_dalpha = float(3.0 * a3 * alpha_i * alpha_i + 2.0 * a2 * alpha_i + a1)
+            Teff = float(sabr_pricer.t)
+            Fps = float(forward + shift)
+            Kps = float(strike + shift)
 
-                dalpha_i_dnu = 0.0
-                if abs(dP_dalpha) > 1e-18:
-                    da2_dnu = float(Tst * (f_power_i ** 2) * (rho_i * b_i) / 4.0)
-                    da1_dnu = float(f_power_i * Tst * nu_i * c_rho_i / 12.0)
-                    dP_dnu  = float(da2_dnu * (alpha_i ** 2) + da1_dnu * alpha_i)
-                    dalpha_i_dnu = float(-dP_dnu / dP_dalpha)
+            h = 1e-4
+            out = []
 
-                dAlphaStar_dNu_i = float(pref * w * s * dalpha_i_dnu)
+            for i, (Ti, Te, w_i, s_i) in enumerate(zip(Tis, Texp, weights, time_scales)):
+                nu0 = float(nus[i])
 
-                dSigma_dNu_i = float(dsigma_dnu_partial * dNuStar_dNu_i + dsigma_dalpha * dAlphaStar_dNu_i)
-                out.append((Tst, Ti, dSigma_dNu_i))
+                nu_plus = nu0 + h
+                nu_minus = max(0.0, nu0 - h)
+
+                # alpha_i changes when nu_i changes
+                pr_plus = Hagan2002LognormalSABR(
+                    f=float(forward), shift=float(shift), t=float(Te),
+                    v_atm_n=vns[i], beta=bs[i], rho=rhos[i], volvol=nu_plus
+                )
+                pr_minus = Hagan2002LognormalSABR(
+                    f=float(forward), shift=float(shift), t=float(Te),
+                    v_atm_n=vns[i], beta=bs[i], rho=rhos[i], volvol=nu_minus
+                )
+
+                a_plus = float(pr_plus.alpha())
+                a_minus = float(pr_minus.alpha())
+
+                alpha_plus = alpha_star + sqrt_g * w_i * s_i * (a_plus - alphas[i])
+                alpha_minus = alpha_star + sqrt_g * w_i * s_i * (a_minus - alphas[i])
+
+                nu_plus_star = nu_star + w_i * s_i * (nu_plus - nu0)
+                nu_minus_star = nu_star + w_i * s_i * (nu_minus - nu0)
+
+                sig_plus = float(lognormal_vol(Kps, Fps, Teff, alpha_plus, beta_star, rho_star, nu_plus_star))
+                sig_minus = float(lognormal_vol(Kps, Fps, Teff, alpha_minus, beta_star, rho_star, nu_minus_star))
+
+                denom = (nu_plus - nu_minus)
+                dSig = (sig_plus - sig_minus) / denom if abs(denom) > 0.0 else 0.0
+
+                out.append((float(Te), float(Ti), float(dSig)))
 
             return out
 
@@ -1488,15 +1563,14 @@ class SABRCalculator:
         dH_drho = float((dB_drho + dC_drho) * T)
 
         # x(rho): z fixed w.r.t rho
-        A_x = float(sqrt_term + z - rho_eff)
-        if abs(A_x) <= 1e-18 or abs(1.0 - rho_eff) <= 1e-18:
-            return 0.0 if self.method != "bottom-up" else []
-
-        dsqrt_drho = float(-z / sqrt_term)             
-        dA_x_drho  = float(dsqrt_drho - 1.0)
-        dx_drho = float(dA_x_drho / A_x + 1.0 / (1.0 - rho_eff))
-
         if abs(z) > eps:
+            A_x = float(sqrt_term + z - rho_eff)
+            if abs(A_x) <= 1e-18 or abs(1.0 - rho_eff) <= 1e-18:
+                return 0.0 if self.method != "bottom-up" else []
+
+            dsqrt_drho = float(-z / sqrt_term)             
+            dA_x_drho  = float(dsqrt_drho - 1.0)
+            dx_drho = float(dA_x_drho / A_x + 1.0 / (1.0 - rho_eff))
             Numer = alpha * z * H
             Denom = sqrt_fkbeta * Q * x
 
@@ -1602,94 +1676,111 @@ class SABRCalculator:
 
         # BOTTOM-UP
         if self.method == "bottom-up":
-            from fixedincomelib.date.utilities import accrued
-
             dates = self.product.get_fixing_schedule()
-            Tis = [accrued(d0, d1) for d0, d1 in zip(dates, dates[1:])]
+            if dates is None or len(dates) < 2:
+                return []
+
+            dc = self.product.dayCounter
+
+            Tis = [float(dc.yearFraction(d0, d1)) for d0, d1 in zip(dates, dates[1:])]
             total = float(sum(Tis))
-            if total <= 0.0:
+            if total <= 0.0 or any(Ti <= 0.0 for Ti in Tis):
                 return []
 
             weights = [float(Ti / total) for Ti in Tis]
             offsets = np.cumsum([0.0] + Tis[:-1])
-            Tstarts = [float(expiry + x) for x in offsets]
+            Tstarts = [float(expiry) + float(x) for x in offsets]
+            Tends   = [Ts + Ti for Ts, Ti in zip(Tstarts, Tis)]
 
-            Te = float(sum(w * Tst for w, Tst in zip(weights, Tstarts)))
+            use_end_time = (getattr(self.product, "oisIndex_", None) is not None)
+            Texp = Tends if use_end_time else Tstarts
 
-            if not np.isfinite(Te) or Te <= 0.0:
-                raise ValueError(
-                    f"[bottom-up] invalid Te={Te}. Check expiry={expiry}, tenor={tenor}, "
-                    f"Tstarts(min,max)=({min(Tstarts)}, {max(Tstarts)}), total={total}."
-                )
+            Tbar = float(sum(w * T for w, T in zip(weights, Texp)))
+            if not np.isfinite(Tbar) or Tbar <= 0.0:
+                return []
 
-            if any((not np.isfinite(Tst) or Tst <= 0.0) for Tst in Tstarts):
-                bad = [Tst for Tst in Tstarts if (not np.isfinite(Tst) or Tst <= 0.0)]
-                raise ValueError(f"[bottom-up] invalid Tstarts (<=0 or non-finite): {bad}.")
+            time_scales = [float(np.sqrt(T / Tbar)) for T in Texp]
 
-            time_scales = [float(np.sqrt(Tst / Te)) for Tst in Tstarts]
+            t_first = float(Texp[0])
+            t_last  = float(Texp[-1])
+            gamma_1N = float(self.corr_surf.corr(t_first, t_last))
 
-            T_total = float(sum(Tis))
-            gamma_1N = float(self.corr_surf.corr(expiry, T_total))
             N = len(Tis)
             if N <= 1:
                 gamma_bar = 1.0
             else:
-                mu = float((1.0 - gamma_1N) / (N - 1))
-                Gamma = np.zeros((N, N))
-                for i in range(N):
-                    for j in range(N):
-                        dt = abs(i - j)
-                        Gamma[i, j] = max(0.0, 1.0 - mu * dt)
-                gamma_bar = float(Gamma.mean())
+                mu = (1.0 - gamma_1N) / (N - 1)
+                s = 0.0
+                for d in range(N):
+                    val = 1.0 - mu * d
+                    if val < 0.0:
+                        val = 0.0
+                    cnt = N if d == 0 else 2.0 * (N - d)
+                    s += cnt * val
+                gamma_bar = float(s / (N * N))
 
-            inv_sqrt_gb = float(1.0 / np.sqrt(gamma_bar))
-            pref_alpha  = float(np.sqrt(gamma_bar))
+            sqrt_g = float(np.sqrt(gamma_bar))
+            if not (0.0 < sqrt_g <= 1.0):
+                return []
 
-            out = []
-            for w, s, Ti, Tst in zip(weights, time_scales, Tis, Tstarts):
-                Tst = float(Tst)
-                Ti  = float(Ti)
-                if Tst <= 0.0:
-                    continue
-
+            vns, bs, nus, rhos, alphas = [], [], [], [], []
+            for Ti, Te in zip(Tis, Texp):
                 vn_i, b_i, nu_i, rho_i, _, _ = self.model.get_sabr_parameters(
-                    index=index, expiry=Tst, tenor=Ti, product_type=None
+                    index=index, expiry=float(Te), tenor=float(Ti), product_type=None
                 )
-                vn_i  = float(vn_i)
-                b_i   = float(b_i)
-                nu_i  = float(nu_i)
-                rho_i = float(rho_i)
+                vn_i = float(vn_i); b_i = float(b_i); nu_i = float(nu_i); rho_i = float(rho_i)
 
-                pr_i = Hagan2002LognormalSABR(
-                    f=forward, shift=shift, t=Tst,
+                pr = Hagan2002LognormalSABR(
+                    f=float(forward), shift=float(shift), t=float(Te),
                     v_atm_n=vn_i, beta=b_i, rho=rho_i, volvol=nu_i
                 )
-                alpha_i = float(pr_i.alpha())
-                if alpha_i <= 0.0:
-                    continue
 
-                dRhoStar_dRho_i = float(w * inv_sqrt_gb)
-                f_power_i = float(Fp ** (b_i - 1.0))
-                c_rho_i = float(2.0 - 3.0 * rho_i * rho_i)
-                g_i = float(1.0 + Tst * (nu_i ** 2) * c_rho_i / 24.0)
+                vns.append(vn_i); bs.append(b_i); nus.append(nu_i); rhos.append(rho_i)
+                alphas.append(float(pr.alpha()))
 
-                a3 = float(Tst * (f_power_i ** 3) * ((1.0 - b_i) ** 2) / 24.0)
-                a2 = float(Tst * (f_power_i ** 2) * (rho_i * b_i * nu_i) / 4.0)
-                a1 = float(g_i * f_power_i)
+            alpha_star = float(sqrt_g * sum(w * a * s for w, a, s in zip(weights, alphas, time_scales)))
+            beta_star  = float(sum(w * b for w, b in zip(weights, bs)))
+            nu_star    = float(sum(w * nu * s for w, nu, s in zip(weights, nus, time_scales)))
+            rho_star   = float((1.0 / sqrt_g) * sum(w * r for w, r in zip(weights, rhos)))
 
-                dP_dalpha = float(3.0 * a3 * alpha_i * alpha_i + 2.0 * a2 * alpha_i + a1)
+            Teff = float(sabr_pricer.t)
+            Fps = float(forward + shift)
+            Kps = float(strike + shift)
 
-                dalpha_i_drho = 0.0
-                if abs(dP_dalpha) > 1e-18:
-                    da2_drho = float(Tst * (f_power_i ** 2) * (b_i * nu_i) / 4.0)
-                    da1_drho = float(-f_power_i * Tst * (nu_i ** 2) * rho_i / 4.0)
-                    dP_drho  = float(da2_drho * (alpha_i ** 2) + da1_drho * alpha_i)
-                    dalpha_i_drho = float(-dP_drho / dP_dalpha)
+            h = 1e-4
+            out = []
 
-                dAlphaStar_dRho_i = float(pref_alpha * w * s * dalpha_i_drho)
+            for i, (Ti, Te, w_i, s_i) in enumerate(zip(Tis, Texp, weights, time_scales)):
+                r0 = float(rhos[i])
 
-                dSigma_dRho_i = float(dsigma_drho_partial * dRhoStar_dRho_i + dsigma_dalpha * dAlphaStar_dRho_i)
-                out.append((Tst, Ti, dSigma_dRho_i))
+                r_plus = min(0.9999, r0 + h)
+                r_minus = max(-0.9999, r0 - h)
+
+                pr_plus = Hagan2002LognormalSABR(
+                    f=float(forward), shift=float(shift), t=float(Te),
+                    v_atm_n=vns[i], beta=bs[i], rho=r_plus, volvol=nus[i]
+                )
+                pr_minus = Hagan2002LognormalSABR(
+                    f=float(forward), shift=float(shift), t=float(Te),
+                    v_atm_n=vns[i], beta=bs[i], rho=r_minus, volvol=nus[i]
+                )
+
+                a_plus = float(pr_plus.alpha())
+                a_minus = float(pr_minus.alpha())
+
+                alpha_plus = alpha_star + sqrt_g * w_i * s_i * (a_plus - alphas[i])
+                alpha_minus = alpha_star + sqrt_g * w_i * s_i * (a_minus - alphas[i])
+
+                rho_plus_star = rho_star + (w_i / sqrt_g) * (r_plus - r0)
+                rho_minus_star = rho_star + (w_i / sqrt_g) * (r_minus - r0)
+
+                sig_plus = float(lognormal_vol(Kps, Fps, Teff, alpha_plus, beta_star, rho_plus_star, nu_star))
+                sig_minus = float(lognormal_vol(Kps, Fps, Teff, alpha_minus, beta_star, rho_minus_star, nu_star))
+
+                denom = (r_plus - r_minus)
+                dSig = (sig_plus - sig_minus) / denom if abs(denom) > 0.0 else 0.0
+
+                out.append((float(Te), float(Ti), float(dSig)))
 
             return out
 
@@ -1846,7 +1937,7 @@ class SABRCalculator:
             dH_dalpha = float((dA_dalpha + dB_dalpha) * T)
             dx_dalpha = float(dx_dz * dz_dalpha)
 
-            dNumer_dalpha = float(alpha * dz_dalpha * H + alpha * z * dH_dalpha + z * H)
+            dNumer_dalpha = float(alpha * z * dH_dalpha)
             dDenom_dalpha = float(sqrt_fkbeta * Q * dx_dalpha)
 
             dsigma_dalpha = float((dNumer_dalpha * Denom - Numer * dDenom_dalpha) / (Denom * Denom))
@@ -1902,6 +1993,9 @@ class SABRCalculator:
 
         gamma = float(gFirst / denA + gSecond / denB)
 
+        if (not np.isfinite(gamma)) or gamma <= 0.0:
+            return 0.0
+
         # derivatives of gamma wrt k
         dDenA = float(16.0 * k + 10.0)
         dDenB = float(4.0 * (3.0 * k + 2.0) ** 2 + (4.0 * k + 3.0) * (18.0 * k + 12.0))
@@ -1915,10 +2009,15 @@ class SABRCalculator:
         dgamma = float((dgFirst * denA - gFirst * dDenA) / (denA * denA) + (dgSecond * denB - gSecond * dDenB) / (denB * denB))
 
         nuHat2 = float((nu0 ** 2) * gamma * (2.0 * k + 1.0) / (tau**3 * te))
-        nuHat  = float(np.sqrt(nuHat2))
+        nuHat2 = max(nuHat2, 0.0)
+        if nuHat2 <= 0.0:
+            return 0.0
+        nuHat = float(np.sqrt(nuHat2))
 
+        # safe because gamma>0 due to guard above
         dnuHat2 = float(nuHat2 * ((dgamma / gamma) + (2.0 / (2.0 * k + 1.0)) - 3.0 * (dtau / tau)))
-        dnuHat = float(0.5 * dnuHat2 / nuHat)
+        dnuHat = float(0.5 * dnuHat2 / nuHat) if nuHat > 0.0 else 0.0
+
 
         termA = float((nu0 ** 2) * (tau**2 + 2.0 * k * ts**2 + te**2))
         termB = float(2.0 * te * tau * (k + 1.0))
@@ -1935,9 +2034,14 @@ class SABRCalculator:
         dH_td = float(dH1 - dnuHat2)
 
         alphaHat2 = float((alpha0 ** 2) / (2.0 * k + 1.0) * (tau / te) * np.exp(0.5 * H_td * te))
-        alphaHat  = float(np.sqrt(alphaHat2))
+        alphaHat2 = max(alphaHat2, 0.0)
+        if alphaHat2 <= 0.0:
+            return 0.0
+        alphaHat = float(np.sqrt(alphaHat2))
+
         dalphaHat2 = float(alphaHat2 * (-2.0 / (2.0 * k + 1.0) + (dtau / tau) + 0.5 * te * dH_td))
-        dalphaHat  = float(0.5 * dalphaHat2 / alphaHat)
+        dalphaHat = float(0.5 * dalphaHat2 / alphaHat) if alphaHat > 0.0 else 0.0
+
 
         numR = float(3.0 * tau**2 + 2.0 * k * ts**2 + te**2)
         dnumR = float(6.0 * tau * dtau + 2.0 * ts**2)
@@ -1989,35 +2093,36 @@ class SABRCalculator:
         if T <= 0.0 or alpha_eff <= 0.0:
             return 0.0
 
-        # gamma_bar construction and its derivative wrt gamma_1N
-        from fixedincomelib.date.utilities import accrued
-
         dates = self.product.get_fixing_schedule()
-        Tis = [float(accrued(d0, d1)) for d0, d1 in zip(dates, dates[1:])]
+        dc = self.product.dayCounter
+        Tis = [float(dc.yearFraction(d0, d1)) for d0, d1 in zip(dates, dates[1:])]
+
         total = float(sum(Tis))
         if total <= 0.0:
             return 0.0
 
         weights = [float(Ti / total) for Ti in Tis]
         offsets = np.cumsum([0.0] + Tis[:-1])
-        Tstarts = [float(expiry + x) for x in offsets]
+        Tstarts = [float(expiry) + float(x) for x in offsets]
+        Tends   = [Ts + Ti for Ts, Ti in zip(Tstarts, Tis)]
 
-        Te = float(sum(w * Tst for w, Tst in zip(weights, Tstarts)))
+        use_end_time = (getattr(self.product, "oisIndex_", None) is not None)
+        Texp = Tends if use_end_time else Tstarts
 
+        # validate segment times (validate Texp, not just Tstarts)
+        if any((not np.isfinite(T) or T <= 0.0) for T in Texp):
+            bad = [T for T in Texp if (not np.isfinite(T) or T <= 0.0)]
+            raise ValueError(f"[bottom-up] invalid segment times in Texp (<=0 or non-finite): {bad}")
+
+        Te = float(sum(w * T for w, T in zip(weights, Texp)))
         if not np.isfinite(Te) or Te <= 0.0:
             raise ValueError(
                 f"[bottom-up] invalid Te={Te}. Check expiry={expiry}, tenor={tenor}, "
-                f"Tstarts(min,max)=({min(Tstarts)}, {max(Tstarts)}), total={total}."
+                f"Texp(min,max)=({min(Texp)}, {max(Texp)}), total={total}."
             )
 
-        if any((not np.isfinite(Tst) or Tst <= 0.0) for Tst in Tstarts):
-            bad = [Tst for Tst in Tstarts if (not np.isfinite(Tst) or Tst <= 0.0)]
-            raise ValueError(f"[bottom-up] invalid Tstarts (<=0 or non-finite): {bad}.")
-
-        time_scales = [float(np.sqrt(Tst / Te)) for Tst in Tstarts]
-
-        T_total = float(sum(Tis))
-        gamma_1N = float(self.corr_surf.corr(float(expiry), T_total))
+        time_scales = [float(np.sqrt(T / Te)) for T in Texp]
+        gamma_1N = float(self.corr_surf.corr(float(Texp[0]), float(Texp[-1])))
 
         N = len(Tis)
         if N <= 1:
@@ -2047,7 +2152,7 @@ class SABRCalculator:
 
         alpha_sum = 0.0
         rho_sum   = 0.0
-        for w, s, Ti, Tst in zip(weights, time_scales, Tis, Tstarts):
+        for w, s, Ti, Tst in zip(weights, time_scales, Tis, Texp):
             if Tst <= 0.0:
                 continue
             v_n_i, b_i, nu_i, rho_i, _, _ = self.model.get_sabr_parameters(
@@ -2130,7 +2235,7 @@ class SABRCalculator:
             dH_dalpha = float((dA_dalpha + dB_dalpha) * T)
             dx_dalpha = float(dx_dz * dz_dalpha)
 
-            dNumer_dalpha = float(alpha * dz_dalpha * H + alpha * z * dH_dalpha + z * H)
+            dNumer_dalpha = float(alpha * z * dH_dalpha)
             dDenom_dalpha = float(sqrt_fkbeta * Q * dx_dalpha)
             dsigma_dalpha = float((dNumer_dalpha * Denom - Numer * dDenom_dalpha) / (Denom * Denom))
 
