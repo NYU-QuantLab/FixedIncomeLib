@@ -81,7 +81,8 @@ class YieldCurve(Model):
         if isinstance(to_date, str): 
             to_date_ = Date(to_date) 
         assert to_date_ >= self.valueDate_
-        time = accrued(self.valueDate_, to_date_)
+        dc = this_component.targetIndex_.dayCounter()
+        time = float(dc.yearFraction(self.valueDate_, to_date_))
         exponent = this_component.getStateVarInterpolator().integral(0, time)
         return np.exp(-exponent)
     
@@ -179,7 +180,9 @@ class YieldCurve(Model):
         if not (to_dt >= self.valueDate_):
             raise AssertionError("time must be >= value date")
         
-        tau = accrued(start_dt=self.valueDate_, end_date=to_dt)
+        dc = comp.targetIndex_.dayCounter()
+        tau = float(dc.yearFraction(self.valueDate_, to_dt))
+        # tau = accrued(start_dt=self.valueDate_, end_date=to_dt)
         df = float(self.discountFactor(index=index, to_date=to_dt))
         pillar_times = np.asarray(comp.pillarsTimeToDate, dtype=float)
 
@@ -247,8 +250,11 @@ class YieldCurve(Model):
 
         starts = np.concatenate(([0.0], pillar_times[:-1]))
         ends = pillar_times
-        tau_S = accrued(self.valueDate_, start)
-        tau_E = accrued(self.valueDate_, end)
+        dc = comp.targetIndex_.dayCounter()
+        tau_S = float(dc.yearFraction(self.valueDate_, start_dt))
+        tau_E = float(dc.yearFraction(self.valueDate_, end_dt))
+        # tau_S = accrued(self.valueDate_, start)
+        # tau_E = accrued(self.valueDate_, end)
         overlap_S = np.maximum(0.0, np.minimum(tau_S, ends) - starts)
         overlap_E = np.maximum(0.0, np.minimum(tau_E, ends) - starts)
         g_S = (-df_S) * overlap_S
@@ -354,7 +360,8 @@ class YieldCurveModelComponent(ModelComponent):
             build_method=self.buildMethod_,
         )
 
-        anchors, times, pillar_instruments = build_anchor_pillars(list(calibration_instruments),self.valueDate_)
+        dc = self.targetIndex_.dayCounter()
+        anchors, times, pillar_instruments = build_anchor_pillars(list(calibration_instruments),self.valueDate_, dc)
         self.pillarDates = anchors
         self.pillarsTimeToDate = times
 

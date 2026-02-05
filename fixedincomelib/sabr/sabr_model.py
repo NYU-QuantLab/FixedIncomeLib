@@ -301,7 +301,7 @@ class SabrModelComponent(ModelComponent):
         if n1 == 0 or n2 == 0:
             raise ValueError("Empty SABR surface axes.")
 
-        # ---- Degenerate cases: 1D/0D surfaces ----
+        # Degenerate cases: 1D/0D surfaces
         if n1 == 1 and n2 == 1:
             # only one node
             return [(0, 1.0)]
@@ -343,7 +343,7 @@ class SabrModelComponent(ModelComponent):
 
             return [(0 * n2 + j, w1), (0 * n2 + (j + 1), w2)]
 
-        # ---- Standard 2D bilinear interpolation (your existing logic) ----
+        #Standard 2D bilinear interpolation
         i = int(np.searchsorted(ax1, x) - 1)
         j = int(np.searchsorted(ax2, y) - 1)
 
