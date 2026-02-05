@@ -96,4 +96,3 @@ def qfCreateValueReport(
     # TODO implement display report
 
     return this_report
-    
