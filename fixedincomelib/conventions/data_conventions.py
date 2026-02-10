@@ -35,6 +35,8 @@ class DataConvention:
 @dataclass(frozen=True, slots=True)
 class DataConventionRFRSwap(DataConvention):
     ois_compounding: str = "COMPOUND"
+    fixed_accrual_period: str = "1Y"
+    float_accrual_period: str = "1Y"
 
 @dataclass(frozen=True, slots=True)
 class DataConventionRFRFuture(DataConvention):
@@ -42,7 +44,8 @@ class DataConventionRFRFuture(DataConvention):
 
 @dataclass(frozen=True, slots=True)
 class DataConventionIborSwap(DataConvention):
-    pass
+    fixed_accrual_period: str = "6M"
+    float_accrual_period: str = "3M"
 
 @dataclass(frozen=True, slots=True)
 class DataConventionIborFuture(DataConvention):
@@ -54,9 +57,9 @@ class DataConventionRegistry:
     _instance: "DataConventionRegistry" | None = None
     _REQUIRED_BASE = ("index","accrual_basis","accrual_period","payment_offset","payment_biz_day_conv","payment_hol_conv")
     _DISPATCH: Dict[str, BuilderFn] = {
-        "RFR SWAP":   lambda base, p: DataConventionRFRSwap(**base, ois_compounding=p.get("ois_compounding","COMPOUND")),
+        "RFR SWAP":   lambda base, p: DataConventionRFRSwap(**base, ois_compounding=p.get("ois_compounding","COMPOUND"), fixed_accrual_period=p.get("fixed_accrual_period", p["accrual_period"]), float_accrual_period=p.get("float_accrual_period", p["accrual_period"])),
         "RFR FUTURE": lambda base, p: DataConventionRFRFuture(**base, compounding= p.get("compounding","COMPOUND")),
-        "IBOR SWAP":   lambda base, p: DataConventionIborSwap(**base),
+        "IBOR SWAP":   lambda base, p: DataConventionIborSwap(**base, fixed_accrual_period=p.get("fixed_accrual_period", p["accrual_period"]), float_accrual_period=p.get("float_accrual_period", p["accrual_period"])),
         "IBOR FUTURE": lambda base, p: DataConventionIborFuture(**base),
     }
     def __new__(cls, *args, **kwargs):

@@ -354,12 +354,13 @@ class ProductIborSwap(Product):
         self,
         effectiveDate: str,
         maturityDate: str,
-        frequency: str,
+        fixedFrequency: str,
         iborIndex: str,
         spread: float,
         fixedRate: float,
         notional: float,
         position: str,
+        floatFrequency: Optional[str] = None,
         holConv: str      = 'USGS',
         bizConv: str      = 'F',
         accrualBasis: str = 'ACT/360',
@@ -372,10 +373,13 @@ class ProductIborSwap(Product):
         self.payFixed_    = (position.upper() == 'SHORT')
         float_position = "LONG" if self.payFixed_ else "SHORT"
 
+        if floatFrequency is None:
+            floatFrequency = iborIndex.split('-')[-1]
+
         self.floatingLeg = InterestRateStream(
             startDate      = effectiveDate,
             endDate        = maturityDate,
-            frequency      = frequency,
+            frequency      = floatFrequency,
             iborIndex      = iborIndex,
             iborSpread     = spread,
             overnightIndex = None,
@@ -392,7 +396,7 @@ class ProductIborSwap(Product):
         self.fixedLeg = InterestRateStream(
             startDate      = effectiveDate,
             endDate        = maturityDate,
-            frequency      = frequency,
+            frequency      = fixedFrequency,
             iborIndex      = None,
             overnightIndex = None,
             fixedRate      = fixedRate,
@@ -454,12 +458,13 @@ class ProductOvernightSwap(Product):
         self,
         effectiveDate: str,
         maturityDate: str,
-        frequency: str,
+        fixedFrequency: str,
         overnightIndex: str,
         spread: float,
         fixedRate: float,
         notional: float,
         position: str,
+        floatFrequency: Optional[str] = None,
         holConv: str      = 'SOFR',
         bizConv: str      = 'F',
         accrualBasis: str = 'ACT/360',
@@ -475,7 +480,7 @@ class ProductOvernightSwap(Product):
         self.floatingLeg = InterestRateStream(
             startDate      = effectiveDate,
             endDate        = maturityDate,
-            frequency      = frequency,
+            frequency      = floatFrequency,
             iborIndex      = None,
             overnightIndex = overnightIndex,
             fixedRate      = None,
@@ -493,7 +498,7 @@ class ProductOvernightSwap(Product):
         self.fixedLeg = InterestRateStream(
             startDate      = effectiveDate,
             endDate        = maturityDate,
-            frequency      = frequency,
+            frequency      = fixedFrequency,
             iborIndex      = None,
             overnightIndex = None,
             fixedRate      = fixedRate,

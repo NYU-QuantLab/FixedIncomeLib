@@ -40,7 +40,8 @@ def build_rfr_swap(
     return ProductOvernightSwap(
         effectiveDate=spot,
         maturityDate=maturity,
-        frequency=conv.accrual_period,
+        fixedFrequency=conv.fixed_accrual_period,
+        floatFrequency=conv.float_accrual_period,
         overnightIndex=conv.index_key,
         spread=0.0,
         fixedRate=float(value),
@@ -84,20 +85,21 @@ def build_ibor_swap(
     maturity: Date = addPeriod(spot, str(axis_entry).strip().upper(), conv.payment_biz_day_conv, conv.payment_hol_conv)
     use_notional = 1.0 if notional is None else float(notional)
     return ProductIborSwap(
-    effectiveDate=spot,
-    maturityDate=maturity,
-    frequency=conv.accrual_period,
-    iborIndex=conv.index_key,   # <-- FIX THIS
-    spread=0.0,
-    fixedRate=float(value),
-    notional=use_notional,
-    position=("SHORT" if long_or_short.upper() == "SHORT" else "LONG"),
-    holConv=conv.payment_hol_conv,
-    bizConv=conv.payment_biz_day_conv,
-    accrualBasis=conv.accrual_basis,
-    rule="BACKWARD",
-    endOfMonth=False,
-)
+        effectiveDate=spot,
+        maturityDate=maturity,
+        fixedfrequency=conv.fixed_accrual_period,
+        floatFrequency=conv.float_accrual_period,
+        iborIndex=conv.index_key, 
+        spread=0.0,
+        fixedRate=float(value),
+        notional=use_notional,
+        position=("SHORT" if long_or_short.upper() == "SHORT" else "LONG"),
+        holConv=conv.payment_hol_conv,
+        bizConv=conv.payment_biz_day_conv,
+        accrualBasis=conv.accrual_basis,
+        rule="BACKWARD",
+        endOfMonth=False,
+    )
 
 _BUILDER_MAP = {
     DataConventionRFRFuture: build_rfr_future,

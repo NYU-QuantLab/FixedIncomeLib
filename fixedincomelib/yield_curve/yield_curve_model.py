@@ -96,30 +96,31 @@ class YieldCurve(Model):
         else:
             return self.forwardIborIndex(component.target, effectiveDate, termOrTerminationDate)
         
-    def forwardIborIndex(self, index : str, effectiveDate : Union[Date, str], termOrTerminationDate : Union[str, TermOrTerminationDate, Date]=''):
-        component = self.retrieveComponent(index)
-        liborIndex = component.targetIndex
-        tenor = liborIndex.tenor()
-        # end date
-        cal = liborIndex.fixingCalendar()
-        effectiveDate_ = effectiveDate
-        if isinstance(effectiveDate, str): effectiveDate_ = Date(effectiveDate)
-        termDate = Date(cal.advance(effectiveDate_, tenor, liborIndex.businessDayConvention()))
-        if isinstance(termOrTerminationDate, (int, float)):
-            raise TypeError("Do not pass year-fractions to forwardIborIndex; pass a Period or end date.")
-        if not (isinstance(termOrTerminationDate, str) and termOrTerminationDate.strip() == ""):
-            to = termOrTerminationDate if isinstance(termOrTerminationDate, TermOrTerminationDate) else TermOrTerminationDate(termOrTerminationDate)
-            if not to.isTerm():
-                passed_end = to.getDate()
-                if passed_end != termDate:
-                    raise ValueError(f"Non-vanilla coupon detected: tenor implies {termDate}, instrument end is {passed_end}. "
-                        f"Either allow stubs or use the passed end date.")
-        # accrued
+    def forwardIborIndex(self, index, effectiveDate, termOrTerminationDate):
+        component = self.components[index]
+        liborIndex = component.targetIndex_
+
+        effectiveDate_ = Date(effectiveDate) if isinstance(effectiveDate, str) else effectiveDate
+
+        if isinstance(termOrTerminationDate, Date):
+            termDate = termOrTerminationDate
+        else:
+            to = termOrTerminationDate if isinstance(termOrTerminationDate, TermOrTerminationDate) \
+                else TermOrTerminationDate(termOrTerminationDate)
+
+            if to.isTerm():
+                cal = liborIndex.fixingCalendar()
+                bdc = liborIndex.businessDayConvention()
+                termDate = Date(cal.advance(effectiveDate_, to.getTerm(), bdc))
+            else:
+                termDate = to.getDate()
+
         accrual = liborIndex.dayCounter().yearFraction(effectiveDate_, termDate)
-        # forward rate
+
         dfStart = self.discountFactor(index, effectiveDate_)
-        dfEnd = self.discountFactor(index, termDate)
-        return (dfStart / dfEnd - 1.) / accrual
+        dfEnd   = self.discountFactor(index, termDate)
+
+        return (dfStart / dfEnd - 1.0) / accrual
     
     def forwardOvernightIndex(self, index : str, effectiveDate : Union[Date, str], termOrTerminationDate : Union[str, TermOrTerminationDate, Date]):
         component = self.retrieveComponent(index)
