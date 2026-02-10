@@ -1,12 +1,10 @@
-import math
 from typing import Any, Dict, List, Tuple
 import numpy as np
-import pandas as pd
 from fixedincomelib.model.model import Model, ModelComponent
 from fixedincomelib.date import Date
 from fixedincomelib.utilities.numerics import Interpolator2D
 from fixedincomelib.yield_curve import YieldCurve
-from fixedincomelib.data import DataCollection, Data2D, Data1D
+from fixedincomelib.data import DataCollection, Data2D
 from fixedincomelib.data import build_yc_data_collection
 
 class SabrModel(Model):
@@ -48,28 +46,6 @@ class SabrModel(Model):
     ) -> "SabrModel":
         return cls(valueDate, dataCollection, buildMethodCollection, ycModel)
 
-    # @classmethod
-    # def from_data(
-    #     cls,
-    #     valueDate: str,
-    #     dataCollection: DataCollection,
-    #     buildMethodCollection: List[Dict[str, Any]],
-    #     ycData: DataCollection,
-    #     ycBuildMethods: List[Dict[str, Any]]
-    # ) -> "SabrModel":
-    #     zero_curves = []
-    #     for idx_name, sub in ycData.groupby("INDEX"):
-    #         d1 = Data1D.createDataObject(
-    #             data_type="zero_rate",x
-    #             data_convention=idx_name,
-    #             df=sub[["AXIS1", "VALUES"]]
-    #         )
-    #         zero_curves.append(d1)
-    #     yc_dc = DataCollection(zero_curves)
-
-    #     yc = YieldCurve(valueDate, yc_dc, ycBuildMethods)
-    #     return cls(valueDate, dataCollection, buildMethodCollection, yc)
-
     @classmethod
     def from_data(
         cls,
@@ -110,10 +86,6 @@ class SabrModel(Model):
     def _build_sabr_layout(self) -> None:
         """
         Defines the ordering of SABR pillar parameters within the SABR block.
-
-        Ordering is:
-            - components in insertion order of self.components
-            - within a component, row-major flatten of the surface grid
         """
         self._sabr_slice_by_key: Dict[str, slice] = {}
         offset = 0
@@ -208,16 +180,19 @@ class SabrModel(Model):
         return np.asarray(self.gradient_, dtype=float).copy()
 
     def _build_gradient_labels(self) -> None:
-        """
-        Optional: create labels so the gradient vector is human-readable.
-        """
         labels: List[str] = []
 
-        # YC labels if available, else fallback
-        yc_labels = getattr(self.subModel_, "gradient_labels_", None)
-        if yc_labels is None:
-            yc_labels = [f"YC[{i}]" for i in range(int(self._n_yc_params))]
-        labels.extend(list(yc_labels))
+        # YC labels (YieldCurve uses block labels; expand them into per-parameter labels)
+        yc_labels  = getattr(self.subModel_, "gradient_labels_", None)
+        yc_offsets = getattr(self.subModel_, "gradient_offsets_", None)
+
+        if yc_labels is not None and yc_offsets is not None and len(yc_offsets) == len(yc_labels) + 1:
+            for i, lab in enumerate(list(yc_labels)):
+                n = int(yc_offsets[i + 1] - yc_offsets[i])
+                labels.extend([f"{lab}[{k}]" for k in range(n)])
+        else:
+            # fallback: generic per-parameter labels
+            labels.extend([f"YC[{i}]" for i in range(int(self._n_yc_params))])
 
         # SABR pillar labels
         for key, sl in self._sabr_slice_by_key.items():
@@ -264,6 +239,12 @@ class SabrModelComponent(ModelComponent):
         self.axis2 = np.array(md.axis2, dtype=float)   
         self.grid = np.array(md.values, dtype=float)
 
+        if len(self.axis1) >= 2 and np.any(np.diff(self.axis1) < 0.0):
+            raise ValueError(f"{self.target_}: axis1 must be sorted ascending for interpolation/risk. "f"Got axis1={self.axis1}")
+
+        if len(self.axis2) >= 2 and np.any(np.diff(self.axis2) < 0.0):
+            raise ValueError(f"{self.target_}: axis2 must be sorted ascending for interpolation/risk. "f"Got axis2={self.axis2}")
+
         if self.grid.shape != (len(self.axis1), len(self.axis2)):
             raise ValueError(f"{self.target_}: grid shape {self.grid.shape} "f"!= ({len(self.axis1)}, {len(self.axis2)})")
 
@@ -289,103 +270,9 @@ class SabrModelComponent(ModelComponent):
         return int(i) * int(len(self.axis2)) + int(j)
 
     def weights(self, expiry: float, tenor: float):
-        x = float(expiry)
-        y = float(tenor)
-
-        ax1 = np.asarray(self.axis1, dtype=float)
-        ax2 = np.asarray(self.axis2, dtype=float)
-
-        n1 = len(ax1)
-        n2 = len(ax2)
-
-        if n1 == 0 or n2 == 0:
-            raise ValueError("Empty SABR surface axes.")
-
-        # Degenerate cases: 1D/0D surfaces
-        if n1 == 1 and n2 == 1:
-            # only one node
-            return [(0, 1.0)]
-
-        if n2 == 1:
-            # expiry-only interpolation, tenor ignored (surface constant in tenor)
-            if n1 == 1:
-                return [(0, 1.0)]
-
-            i = int(np.searchsorted(ax1, x) - 1)
-            i = max(0, min(i, n1 - 2))
-
-            x1, x2 = float(ax1[i]), float(ax1[i + 1])
-            if x2 == x1:
-                # degenerate: collapse to nearest
-                ii = i if abs(x - x1) <= abs(x - x2) else i + 1
-                return [(ii * n2 + 0, 1.0)]
-
-            w2 = (x - x1) / (x2 - x1)
-            w2 = max(0.0, min(1.0, w2))
-            w1 = 1.0 - w2
-
-            # flat index = i*n2 + 0 (since n2==1)
-            return [(i * n2 + 0, w1), ((i + 1) * n2 + 0, w2)]
-
-        if n1 == 1:
-            # tenor-only interpolation, expiry ignored (surface constant in expiry)
-            j = int(np.searchsorted(ax2, y) - 1)
-            j = max(0, min(j, n2 - 2))
-
-            y1, y2 = float(ax2[j]), float(ax2[j + 1])
-            if y2 == y1:
-                jj = j if abs(y - y1) <= abs(y - y2) else j + 1
-                return [(0 * n2 + jj, 1.0)]
-
-            w2 = (y - y1) / (y2 - y1)
-            w2 = max(0.0, min(1.0, w2))
-            w1 = 1.0 - w2
-
-            return [(0 * n2 + j, w1), (0 * n2 + (j + 1), w2)]
-
-        #Standard 2D bilinear interpolation
-        i = int(np.searchsorted(ax1, x) - 1)
-        j = int(np.searchsorted(ax2, y) - 1)
-
-        i = max(0, min(i, n1 - 2))
-        j = max(0, min(j, n2 - 2))
-
-        x1, x2 = float(ax1[i]), float(ax1[i + 1])
-        y1, y2 = float(ax2[j]), float(ax2[j + 1])
-
-        # guards
-        if x2 == x1 and y2 == y1:
-            return [(i * n2 + j, 1.0)]
-        if x2 == x1:
-            # linear in y only
-            wy2 = (y - y1) / (y2 - y1) if y2 != y1 else 0.0
-            wy2 = max(0.0, min(1.0, wy2))
-            wy1 = 1.0 - wy2
-            return [(i * n2 + j, wy1), (i * n2 + (j + 1), wy2)]
-        if y2 == y1:
-            # linear in x only
-            wx2 = (x - x1) / (x2 - x1) if x2 != x1 else 0.0
-            wx2 = max(0.0, min(1.0, wx2))
-            wx1 = 1.0 - wx2
-            return [(i * n2 + j, wx1), ((i + 1) * n2 + j, wx2)]
-
-        # bilinear
-        tx = (x - x1) / (x2 - x1)
-        ty = (y - y1) / (y2 - y1)
-        tx = max(0.0, min(1.0, tx))
-        ty = max(0.0, min(1.0, ty))
-
-        w11 = (1 - tx) * (1 - ty)
-        w21 = tx * (1 - ty)
-        w12 = (1 - tx) * ty
-        w22 = tx * ty
-
-        return [
-            (i * n2 + j, w11),
-            ((i + 1) * n2 + j, w21),
-            (i * n2 + (j + 1), w12),
-            ((i + 1) * n2 + (j + 1), w22),
-        ]
+        corners = self._interp2d.weights(float(expiry), float(tenor))
+        n2 = len(self.axis2)
+        return [(int(i) * int(n2) + int(j), float(w)) for (i, j), w in corners]
     
     def _sync_from_statevars(self) -> None:
         self.grid = np.asarray(self.stateVars_, dtype=float).reshape(self._shape)

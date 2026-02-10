@@ -242,12 +242,6 @@ class ValuationEngineIborCapFloorlet(ValuationEngine):
      
         self.firstOrderRisk_ = gradient
 
-# ValuationEngineRegistry().insert(
-#     SabrModel.MODEL_TYPE,
-#     ProductIborCapFloorlet.prodType,
-#     ValuationEngineIborCapFloorlet
-# )
-
 class ValuationEngineOvernightCapFloorlet(ValuationEngine):
 
     def __init__(self, model: SabrModel, valuation_parameters: Dict[str, Any], product: ProductOvernightCapFloorlet) -> None:
@@ -502,12 +496,6 @@ class ValuationEngineOvernightCapFloorlet(ValuationEngine):
 
         self.firstOrderRisk_ = gradient
 
-# ValuationEngineRegistry().insert(
-#     SabrModel.MODEL_TYPE,
-#     ProductOvernightCapFloorlet.prodType,
-#     ValuationEngineOvernightCapFloorlet
-# )
-
 class ValuationEngineIborCapFloor(ValuationEngine):
 
     def __init__(
@@ -540,12 +528,6 @@ class ValuationEngineIborCapFloor(ValuationEngine):
 
         self.firstOrderRisk_ = gradient
 
-# ValuationEngineRegistry().insert(
-#     SabrModel.MODEL_TYPE,
-#     ProductIborCapFloor.prodType,
-#     ValuationEngineIborCapFloor
-# )
-
 class ValuationEngineOvernightCapFloor(ValuationEngine):
 
     def __init__(
@@ -577,12 +559,6 @@ class ValuationEngineOvernightCapFloor(ValuationEngine):
             eng.calculateFirstOrderRisk(gradient=gradient, scaler=scaler, accumulate=True)
 
         self.firstOrderRisk_ = gradient
-
-# ValuationEngineRegistry().insert(
-#     SabrModel.MODEL_TYPE,
-#     ProductOvernightCapFloor.prodType,
-#     ValuationEngineOvernightCapFloor
-# )
 
 class ValuationEngineIborSwaption(ValuationEngine):
 
@@ -889,12 +865,6 @@ class ValuationEngineIborSwaption(ValuationEngine):
 
         self.firstOrderRisk_ = gradient 
 
-# ValuationEngineRegistry().insert(
-#     SabrModel.MODEL_TYPE,
-#     ProductIborSwaption.prodType,
-#     ValuationEngineIborSwaption
-# )
-
 class ValuationEngineOvernightSwaption(ValuationEngine):
 
     def __init__(self, model: SabrModel, valuation_parameters: Dict[str, Any], product: ProductOvernightSwaption) -> None:
@@ -1194,12 +1164,6 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
         )
 
         self.firstOrderRisk_ = gradient
-
-# ValuationEngineRegistry().insert(
-#     SabrModel.MODEL_TYPE,
-#     ProductOvernightSwaption.prodType,
-#     ValuationEngineOvernightSwaption
-# )
 
 
 _SABR_ENGINE_MAP = {

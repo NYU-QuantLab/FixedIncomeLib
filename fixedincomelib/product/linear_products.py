@@ -179,7 +179,7 @@ class ProductFuture(Product):
         self.expirationDate_ = Date(self.index_.fixingDate(self.effectiveDate_))
         self.maturityDate_ = Date(self.index_.maturityDate(self.effectiveDate_))
 
-         # contractual size override vs. actual accrual
+        # contractual size override vs. actual accrual
         self.contractualSize_ = contractualSize
         if contractualSize is not None:
             self.accrualFactor_ = contractualSize
@@ -315,15 +315,22 @@ class InterestRateStream(ProductPortfolio):
         endOfMonth: bool               = False
     ):
 
-        # calendar    = HolidayConvention(holConv).value
-        # bdc         = BusinessDayConvention(bizConv).value
-        # dayCounter  = AccrualBasis(accrualBasis).value
-
         schedule = makeSchedule(startDate, endDate, frequency, holConv, bizConv, accrualBasis, rule, endOfMonth)
         prods, weights = [], []
         for row in schedule.itertuples(index=False):
             if iborIndex:
-                cf = ProductIborCashflow(Date(row.StartDate), Date(row.EndDate), iborIndex, iborSpread, notional, position, Date(row.PaymentDate))
+                start = Date(row.StartDate)
+
+                toks = iborIndex.split('-')
+                tenor = toks[-1]                 
+                base  = '-'.join(toks[:-1])      
+                idx   = IndexRegistry().get(base, tenor)
+
+                cal = idx.fixingCalendar()
+                bdc = idx.businessDayConvention()
+
+                end = Date(cal.advance(start, Period(tenor), bdc))   
+                cf = ProductIborCashflow(start, end, iborIndex, iborSpread, notional, position, paymentDate=end)
             elif overnightIndex:
                 cf = ProductOvernightIndexCashflow(Date(row.StartDate), Date(row.EndDate), overnightIndex, ois_compounding, ois_spread, notional, position, Date(row.PaymentDate))
             else:

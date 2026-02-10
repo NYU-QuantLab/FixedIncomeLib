@@ -101,23 +101,6 @@ def makeSchedule(
     
     return df
 
-# def business_day_schedule(
-#     start_date: Date,
-#     end_date:   Date,
-#     calendar) -> list[Date]:
-
-#     ql_sched = ql.Schedule(
-#         start_date,
-#         end_date,
-#         ql.Period(1, ql.Days),
-#         calendar,
-#         ql.Following, ql.Following,
-#         ql.DateGeneration.Forward,
-#         False
-#     )
-
-#     return [ Date(d) for d in ql_sched ]
-
 def business_day_schedule(start_date, end_date, calendar, bdc=ql.Following):
     start = Date(start_date)
     end   = Date(end_date)

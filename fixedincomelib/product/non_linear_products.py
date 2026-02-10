@@ -355,10 +355,7 @@ class ProductOvernightCapFloor(Product):
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
 
-
-# ------------------------
 # Swaption Classes
-# ------------------------
 
 class ProductIborSwaption(Product):
     prodType = "ProductIborSwaption"
@@ -405,7 +402,12 @@ class ProductIborSwaption(Product):
         self.notional_   = notional
         self.position_   = LongOrShort(longOrShort)
         self.optionType_ = optionType.upper()
-        self.iborIndex_  = IndexRegistry().get(iborIndex)
+        self.indexKey_ = iborIndex
+        toks = iborIndex.split('-')
+        assert len(toks) >= 2, f"invalid ibor index format: '{iborIndex}'"
+        tenor = toks[-1]                 
+        base  = '-'.join(toks[:-1])  
+        self.iborIndex_ = IndexRegistry().get(base, tenor)
         assert self.optionType_ in ("PAYER","RECEIVER")        
         super().__init__(
             self.expiryDate_,

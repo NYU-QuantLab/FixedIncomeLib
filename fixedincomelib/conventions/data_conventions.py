@@ -40,6 +40,14 @@ class DataConventionRFRSwap(DataConvention):
 class DataConventionRFRFuture(DataConvention):
     compounding: str = "COMPOUND"
 
+@dataclass(frozen=True, slots=True)
+class DataConventionIborSwap(DataConvention):
+    pass
+
+@dataclass(frozen=True, slots=True)
+class DataConventionIborFuture(DataConvention):
+    pass
+
 BuilderFn = Callable[[Dict[str, Any], Dict[str, Any]], DataConvention]
 
 class DataConventionRegistry:
@@ -48,6 +56,8 @@ class DataConventionRegistry:
     _DISPATCH: Dict[str, BuilderFn] = {
         "RFR SWAP":   lambda base, p: DataConventionRFRSwap(**base, ois_compounding=p.get("ois_compounding","COMPOUND")),
         "RFR FUTURE": lambda base, p: DataConventionRFRFuture(**base, compounding= p.get("compounding","COMPOUND")),
+        "IBOR SWAP":   lambda base, p: DataConventionIborSwap(**base),
+        "IBOR FUTURE": lambda base, p: DataConventionIborFuture(**base),
     }
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
