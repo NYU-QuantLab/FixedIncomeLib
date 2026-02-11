@@ -87,7 +87,7 @@ def build_ibor_swap(
     return ProductIborSwap(
         effectiveDate=spot,
         maturityDate=maturity,
-        fixedfrequency=conv.fixed_accrual_period,
+        fixedFrequency=conv.fixed_accrual_period,
         floatFrequency=conv.float_accrual_period,
         iborIndex=conv.index_key, 
         spread=0.0,

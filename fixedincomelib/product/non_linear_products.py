@@ -387,7 +387,7 @@ class ProductIborSwaption(Product):
         self.underlyingSwap = ProductIborSwap(
             effectiveDate=swapStart,
             maturityDate=swapEnd,
-            fixedfrequency=fixedFrequency,
+            fixedFrequency=fixedFrequency,
             floatFrequency=floatFrequency,
             iborIndex=iborIndex,
             spread=0.0,
