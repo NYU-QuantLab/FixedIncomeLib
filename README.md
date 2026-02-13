@@ -1,6 +1,6 @@
 # FixedIncomeLib
 
-End-to-end fixed-income analytics in Python: market data ingestion → curve calibration → product valuation → risk.
+End-to-end fixed-income analytics in Python: market data ingestion -> curve calibration -> product valuation -> risk.
 Includes a SABR volatility layer for IR options.
 
 **Repo:** NYU-QuantLab/FixedIncomeLib  
