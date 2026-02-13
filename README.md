@@ -38,7 +38,3 @@ Contributions are welcome! Please open issues or pull requests for bugfixes, enh
 
 ---
 
-## License
-
-This project is licensed under the MIT License.
-
