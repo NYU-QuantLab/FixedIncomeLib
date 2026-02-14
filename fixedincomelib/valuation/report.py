@@ -190,29 +190,30 @@ class CashflowsReport:
             df]
 
         # process optional field
+        optional_pairs = [
+            (CFReportColumns.FIXING_DATE.to_string(), fixing_date),
+            (CFReportColumns.START_DATE.to_string(), start_date),
+            (CFReportColumns.END_DATE.to_string(), end_date),
+            (CFReportColumns.ACCRUED.to_string(), accrued),
+            (CFReportColumns.INDEX_OR_FIXED.to_string(), index_or_fixed),
+            (CFReportColumns.INDEX_VALUE.to_string(), index_value),
+        ]
+
+        # process optional field
         if len(self.content_) == 0:
-            if fixing_date is not None:
-                self.schema_.append(CFReportColumns.FIXING_DATE.to_string())
-                this_row.append(fixing_date)
-            if start_date is not None:
-                self.schema_.append(CFReportColumns.START_DATE.to_string())
-                this_row.append(start_date)
-            if end_date is not None:
-                self.schema_.append(CFReportColumns.END_DATE.to_string())
-                this_row.append(end_date)
-            if accrued is not None:
-                self.schema_.append(CFReportColumns.ACCRUED.to_string())
-                this_row.append(accrued)
-            if index_or_fixed is not None:
-                self.schema_.append(CFReportColumns.INDEX_OR_FIXED.to_string())
-                this_row.append(index_or_fixed)
-            if index_value is not None:
-                self.schema_.append(CFReportColumns.INDEX_VALUE.to_string())
-                this_row.append(index_value)
+            for col, val in optional_pairs:
+                if val is not None:
+                    self.schema_.append(col)
+                    this_row.append(val)
+        else:
+            schema_set = set(self.schema_)
+            for col, val in optional_pairs:
+                if col in schema_set:
+                    this_row.append(val)
         
         # consistency validation
         if len(self.content_) != 0:
-            assert len(self.content_) == len(this_row)
+            assert len(self.content_[0]) == len(this_row)
 
         # finalized
         self.content_.append(this_row)

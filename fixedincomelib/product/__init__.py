@@ -6,6 +6,7 @@ from fixedincomelib.product.linear_products import (
     ProductFixedAccrued,
     ProductOvernightIndexCashflow, 
     ProductRFRFuture,
-    InterestRateStream)
+    InterestRateStream,
+    ProductRFRSwap)
 from fixedincomelib.product.product_display_visitor import ProductDisplayVisitor
 from fixedincomelib.product.product_factory import ProductFactory

@@ -394,6 +394,9 @@ class InterestRateStream(ProductPortfolio):
         if float_index is None and fixed_rate is None:
             raise Exception('Cannot have both floating index and fixed rate invalid.')
 
+        self.float_index_ = float_index
+        self.fixed_rate_ = fixed_rate
+
         schedule = make_schedule(
             start_date=effective_date, 
             end_date=termination_date, 
@@ -438,6 +441,14 @@ class InterestRateStream(ProductPortfolio):
             weights.append(1.0)
 
         super().__init__(products, weights)
+
+    @property
+    def float_index(self) -> Optional[str]:
+        return self.float_index_
+
+    @property
+    def fixed_rate(self) -> Optional[float]:
+        return self.fixed_rate_
 
     def cashflow(self, i: int) -> Product:
         return self.element(i)
@@ -495,14 +506,14 @@ class ProductRFRSwap(Product):
         self.accrual_period_ = accrual_period
         self.floating_leg_accrual_period_ = self.accrual_period_ if floating_leg_accrual_period is None else floating_leg_accrual_period
         self.compounding_method_ = compounding_method
-        fixed_leg_sign = 1. if self.pay_or_rec_ == PayOrReceive.PAY else -1.
+        self.fixed_leg_sign_ = -1. if self.pay_or_rec_ == PayOrReceive.PAY else 1.
 
         # floating leg
         self.floating_leg_ = InterestRateStream(
             effective_date=self.effective_date_,
             termination_date=self.termination_date_,
             accrual_period=self.floating_leg_accrual_period_,
-            notional=self.notional_ * fixed_leg_sign * -1.,
+            notional=self.notional_ * -self.fixed_leg_sign_,
             currency=Currency(self.on_index_.currency().code()),
             accrual_basis=self.accrual_basis_,
             buseinss_day_convention=self.pay_business_day_convention_, # not the best
@@ -519,7 +530,7 @@ class ProductRFRSwap(Product):
             effective_date=self.effective_date_,
             termination_date=self.termination_date_,
             accrual_period=self.accrual_period_,
-            notional=self.notional_ * fixed_leg_sign,
+            notional=self.notional_ * self.fixed_leg_sign_,
             currency=Currency(self.on_index_.currency().code()),
             accrual_basis=self.accrual_basis_,
             buseinss_day_convention=self.pay_business_day_convention_,
@@ -538,6 +549,10 @@ class ProductRFRSwap(Product):
         assert 0 <= i < self.fixed_leg_.num_cashflows()
         return self.fixed_leg_.element(i)
     
+    @property
+    def fixed_leg_sign(self):
+        return self.fixed_leg_sign_
+
     @property
     def effective_date(self) -> Date:
         return self.effective_date_
